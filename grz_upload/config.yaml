@@ -1,0 +1,3 @@
+metadata_file_path: 'path/to/metadata_file.csv'
+public_key_path: 'path/to/public/key'
+s3_bucket: 'your-s3-bucket-name'

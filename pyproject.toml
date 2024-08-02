@@ -1,0 +1,40 @@
+[build-system]
+requires = ["setuptools", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "grz_upload"
+version = "0.1.0"
+description = "A tool to encrypt and upload files to S3 with MD5 checksum logging."
+readme = "README.md"
+license = { text = "MIT" }
+authors = [
+    { name = "Koray Kirli", email = "koraykirli@gmail.com" }
+]
+dependencies = [
+    "boto3",
+    "crypt4gh",
+    "pyyaml",
+    "click"
+]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent"
+]
+requires-python = ">=3.6"
+keywords = ["encryption", "S3", "checksum", "upload"]
+
+[project.urls]
+"Homepage" = "https://github.com/yourusername/grz_upload"
+
+[tool.setuptools]
+packages = ["grz_upload"]
+
+[tool.setuptools.entry-points.console_scripts]
+encrypt-upload = "grz_upload.encrypt_upload:main"
+
+[project.optional-dependencies]
+dev = [
+    "unittest"
+]
