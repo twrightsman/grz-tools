@@ -45,16 +45,31 @@ def print_summary(metadata_file_path, log_file):
     print(f"Failed files: {failed_files}")
     print(f"Waiting files: {waiting_files}")
 
-def encrypt_and_upload_files(metadata_file_path, public_key_path, s3_bucket, log_file):
+def calculate_md5(file_path):
+    md5_hash = hashlib.md5()
+    with open(file_path, 'rb') as f:
+        for chunk in iter(lambda: f.read(4096), b""):
+            md5_hash.update(chunk)
+    return md5_hash.hexdigest()
+
+def encrypt_file(input_path, output_path, public_key):
+    with open(input_path, 'rb') as infile, open(output_path, 'wb') as outfile:
+        crypt4gh.lib.encrypt([public_key], infile, outfile)
+
+def encrypt_and_upload_files(metadata_file_path, public_key_path,
+                             s3_url, s3_access_key, s3_secret, s3_bucket, log_file):
     # Validate metadata and print summary
     print_summary(metadata_file_path, log_file)
 
     # Load the public key for encryption
-    with open(public_key_path, 'rb') as key_file:
-        public_key = get_public_key(key_file)
+    public_key = get_public_key(public_key_path)
 
     # Initialize S3 client for uploading
-    s3_client = boto3.client('s3')
+    s3_client = boto3.client('s3',
+                             endpoint_url=s3_url,
+                             aws_access_key_id=s3_access_key,
+                             aws_secret_access_key=s3_secret,
+                      )
 
     # Read the metadata file and process each file
     with open(metadata_file_path, 'r') as csvfile:
@@ -72,6 +87,7 @@ def encrypt_and_upload_files(metadata_file_path, public_key_path, s3_bucket, log
             for row in reader:
                 file_id = row['File id']
                 file_location = row['File Location']
+                temp_encrypted_file = f"{file_id}_temp.enc"
 
                 # Skip files that are already marked as completed
                 if progress.get(file_location) == 'finished':
@@ -79,76 +95,72 @@ def encrypt_and_upload_files(metadata_file_path, public_key_path, s3_bucket, log
 
                 log_progress(log_file, file_location, 'waiting')
 
-                # Initialize MD5 hash objects for original and encrypted files
-                original_md5_hash = hashlib.md5()
-                encrypted_md5_hash = hashlib.md5()
-
-                # Calculate MD5 for the original file
                 try:
-                    with open(file_location, 'rb') as f:
-                        for chunk in iter(lambda: f.read(4096), b""):
-                            original_md5_hash.update(chunk)
+                    # Calculate MD5 for the original file
+                    original_md5 = calculate_md5(file_location)
 
-                    # Open the file again to read in binary mode for encryption and upload
-                    with open(file_location, 'rb') as f:
-                        # Define a generator for encrypted stream
-                        def encrypted_stream():
-                            yield from crypt4gh.lib.encrypt([public_key], f)
+                    # Encrypt the file and save to a temporary location
+                    encrypt_file(file_location, temp_encrypted_file, public_key)
 
-                        # Define a generator to update MD5 hash and yield encrypted chunks
-                        def md5_and_yield(stream):
-                            for chunk in stream:
-                                encrypted_md5_hash.update(chunk)
-                                yield chunk
+                    # Calculate MD5 for the encrypted file
+                    encrypted_md5 = calculate_md5(temp_encrypted_file)
 
-                        # Start multipart upload
-                        multipart_upload = s3_client.create_multipart_upload(Bucket=s3_bucket, Key=file_id)
-                        upload_id = multipart_upload['UploadId']
-                        parts = []
-                        part_number = 1
+                    # Start multipart upload
+                    multipart_upload = s3_client.create_multipart_upload(Bucket=s3_bucket, Key=file_id)
+                    upload_id = multipart_upload['UploadId']
+                    parts = []
+                    part_number = 1
 
-                        try:
-                            # Upload file in chunks
-                            for part in md5_and_yield(encrypted_stream()):
-                                if len(part) < MULTIPART_CHUNK_SIZE:
-                                    log_progress(log_file, file_location, f'part{part_number} being uploaded')
-                                    parts.append({
-                                        'PartNumber': part_number,
-                                        'ETag': s3_client.upload_part(
-                                            Bucket=s3_bucket,
-                                            Key=file_id,
-                                            PartNumber=part_number,
-                                            UploadId=upload_id,
-                                            Body=part
-                                        )['ETag']
-                                    })
-                                    part_number += 1
+                    try:
+                        # Upload file in chunks
+                        with open(temp_encrypted_file, 'rb') as f:
+                            for chunk in iter(lambda: f.read(MULTIPART_CHUNK_SIZE), b""):
+                                log_progress(log_file, file_location, f'part{part_number} being uploaded')
+                                parts.append({
+                                    'PartNumber': part_number,
+                                    'ETag': s3_client.upload_part(
+                                        Bucket=s3_bucket,
+                                        Key=file_id,
+                                        PartNumber=part_number,
+                                        UploadId=upload_id,
+                                        Body=chunk
+                                    )['ETag']
+                                })
+                                part_number += 1
 
-                            # Complete multipart upload
-                            s3_client.complete_multipart_upload(
-                                Bucket=s3_bucket,
-                                Key=file_id,
-                                UploadId=upload_id,
-                                MultipartUpload={'Parts': parts}
-                            )
-                            log_progress(log_file, file_location, 'finished')
+                        # Complete multipart upload
+                        s3_client.complete_multipart_upload(
+                            Bucket=s3_bucket,
+                            Key=file_id,
+                            UploadId=upload_id,
+                            MultipartUpload={'Parts': parts}
+                        )
+                        log_progress(log_file, file_location, 'finished')
 
-                        except Exception as e:
-                            # Abort multipart upload in case of error
-                            log_progress(log_file, file_location, f'part{part_number} failed: {str(e)}')
-                            s3_client.abort_multipart_upload(Bucket=s3_bucket, Key=file_id, UploadId=upload_id)
-                            raise e
+                    except Exception as e:
+                        # Abort multipart upload in case of error
+                        log_progress(log_file, file_location, f'part{part_number} failed: {str(e)}')
+                        s3_client.abort_multipart_upload(Bucket=s3_bucket, Key=file_id, UploadId=upload_id)
+                        raise e
 
                     # Add MD5 checksums and upload status to the row
-                    row['original_md5'] = original_md5_hash.hexdigest()
-                    row['encrypted_md5'] = encrypted_md5_hash.hexdigest()
+                    row['original_md5'] = original_md5
+                    row['encrypted_md5'] = encrypted_md5
                     row['upload_status'] = 'success'
 
                 except Exception as e:
+                    print(s3_url)
+                    print(str(e))
+
                     row['upload_status'] = f'failed: {str(e)}'
+                    print(f"Error: {str(e)}")
 
                 # Write the updated row to the temporary metadata file
                 writer.writerow(row)
+
+                # Delete the temporary encrypted file
+                if os.path.exists(temp_encrypted_file):
+                    os.remove(temp_encrypted_file)
 
     # Replace the original metadata file with the updated one
     os.replace(temp_metadata_file_path, metadata_file_path)
@@ -163,6 +175,9 @@ def main(config):
     encrypt_and_upload_files(
         config['metadata_file_path'],
         config['public_key_path'],
+        config['s3_url'],
+        config['s3_access_key'],
+        config['s3_secret'],
         config['s3_bucket'],
         config.get('log_file', 'upload_progress.log')
     )
