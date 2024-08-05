@@ -1,3 +1,6 @@
 metadata_file_path: 'path/to/metadata_file.csv'
 public_key_path: 'path/to/public/key'
+s3_url: 'your-s3-url'
 s3_bucket: 'your-s3-bucket-name'
+s3_access_key: 'your-s3-bucket-key'
+s3_secret: 'your-s3-bucket-secret'

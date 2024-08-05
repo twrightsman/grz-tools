@@ -26,12 +26,9 @@ requires-python = ">=3.6"
 keywords = ["encryption", "S3", "checksum", "upload"]
 
 [project.urls]
-"Homepage" = "https://github.com/yourusername/grz_upload"
+"Homepage" = "https://github.com/KorayKirli/grz_upload"
 
-[tool.setuptools]
-packages = ["grz_upload"]
-
-[tool.setuptools.entry-points.console_scripts]
+[project.scripts]
 encrypt-upload = "grz_upload.encrypt_upload:main"
 
 [project.optional-dependencies]

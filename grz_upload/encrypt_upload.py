@@ -139,6 +139,8 @@ def main(config):
         config['metadata_file_path'],
         config['public_key_path'],
         config['s3_bucket'],
+        config['s3_access_key'],
+        config['s3_secret'],
         config.get('log_file', 'upload_progress.log')
     )
 
