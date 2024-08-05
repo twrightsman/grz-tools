@@ -45,14 +45,14 @@ def encrypt_and_upload_files(metadata_file_path, public_key_path, s3_bucket, log
             progress = read_progress(log_file)
 
             for row in reader:
-                file_path = row['file_path']
-                s3_key = row['s3_key']
+                file_id = row['File id']
+                file_location = row['File Location']
 
                 # Skip files that are already marked as completed
-                if progress.get(file_path) == 'finished':
+                if progress.get(file_location) == 'finished':
                     continue
 
-                log_progress(log_file, file_path, 'waiting')
+                log_progress(log_file, file_location, 'waiting')
 
                 # Initialize MD5 hash objects for original and encrypted files
                 original_md5_hash = hashlib.md5()
@@ -60,12 +60,12 @@ def encrypt_and_upload_files(metadata_file_path, public_key_path, s3_bucket, log
 
                 # Calculate MD5 for the original file
                 try:
-                    with open(file_path, 'rb') as f:
+                    with open(file_location, 'rb') as f:
                         for chunk in iter(lambda: f.read(4096), b""):
                             original_md5_hash.update(chunk)
 
                     # Open the file again to read in binary mode for encryption and upload
-                    with open(file_path, 'rb') as f:
+                    with open(file_location, 'rb') as f:
                         # Define a generator for encrypted stream
                         def encrypted_stream():
                             yield from crypt4gh.lib.encrypt([public_key], f)
@@ -77,7 +77,7 @@ def encrypt_and_upload_files(metadata_file_path, public_key_path, s3_bucket, log
                                 yield chunk
 
                         # Start multipart upload
-                        multipart_upload = s3_client.create_multipart_upload(Bucket=s3_bucket, Key=s3_key)
+                        multipart_upload = s3_client.create_multipart_upload(Bucket=s3_bucket, Key=file_id)
                         upload_id = multipart_upload['UploadId']
                         parts = []
                         part_number = 1
@@ -86,12 +86,12 @@ def encrypt_and_upload_files(metadata_file_path, public_key_path, s3_bucket, log
                             # Upload file in chunks
                             for part in md5_and_yield(encrypted_stream()):
                                 if len(part) < MULTIPART_CHUNK_SIZE:
-                                    log_progress(log_file, file_path, f'part{part_number} being uploaded')
+                                    log_progress(log_file, file_location, f'part{part_number} being uploaded')
                                     parts.append({
                                         'PartNumber': part_number,
                                         'ETag': s3_client.upload_part(
                                             Bucket=s3_bucket,
-                                            Key=s3_key,
+                                            Key=file_id,
                                             PartNumber=part_number,
                                             UploadId=upload_id,
                                             Body=part
@@ -102,16 +102,16 @@ def encrypt_and_upload_files(metadata_file_path, public_key_path, s3_bucket, log
                             # Complete multipart upload
                             s3_client.complete_multipart_upload(
                                 Bucket=s3_bucket,
-                                Key=s3_key,
+                                Key=file_id,
                                 UploadId=upload_id,
                                 MultipartUpload={'Parts': parts}
                             )
-                            log_progress(log_file, file_path, 'finished')
+                            log_progress(log_file, file_location, 'finished')
 
                         except Exception as e:
                             # Abort multipart upload in case of error
-                            log_progress(log_file, file_path, f'part{part_number} failed: {str(e)}')
-                            s3_client.abort_multipart_upload(Bucket=s3_bucket, Key=s3_key, UploadId=upload_id)
+                            log_progress(log_file, file_location, f'part{part_number} failed: {str(e)}')
+                            s3_client.abort_multipart_upload(Bucket=s3_bucket, Key=file_id, UploadId=upload_id)
                             raise e
 
                     # Add MD5 checksums and upload status to the row
@@ -139,8 +139,6 @@ def main(config):
         config['metadata_file_path'],
         config['public_key_path'],
         config['s3_bucket'],
-        config['s3_access_key'],
-        config['s3_secret'],
         config.get('log_file', 'upload_progress.log')
     )
 
