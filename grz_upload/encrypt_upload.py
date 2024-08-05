@@ -23,7 +23,32 @@ def read_progress(log_file):
                 progress[file_path] = status
     return progress
 
+def validate_metadata(metadata_file_path):
+    required_fields = ['File id', 'File Location']
+    with open(metadata_file_path, 'r') as csvfile:
+        reader = csv.DictReader(csvfile, delimiter=',')
+        for field in required_fields:
+            if field not in reader.fieldnames:
+                raise ValueError(f"Metadata file is missing required field: {field}")
+        files_count = sum(1 for _ in reader)
+    return files_count
+
+def print_summary(metadata_file_path, log_file):
+    progress = read_progress(log_file)
+    total_files = validate_metadata(metadata_file_path)
+    uploaded_files = sum(1 for status in progress.values() if status == 'finished')
+    failed_files = sum(1 for status in progress.values() if 'failed' in status)
+    waiting_files = total_files - uploaded_files - failed_files
+
+    print(f"Total files: {total_files}")
+    print(f"Uploaded files: {uploaded_files}")
+    print(f"Failed files: {failed_files}")
+    print(f"Waiting files: {waiting_files}")
+
 def encrypt_and_upload_files(metadata_file_path, public_key_path, s3_bucket, log_file):
+    # Validate metadata and print summary
+    print_summary(metadata_file_path, log_file)
+
     # Load the public key for encryption
     with open(public_key_path, 'rb') as key_file:
         public_key = get_public_key(key_file)
