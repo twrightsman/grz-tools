@@ -1,3 +1,4 @@
 
 .DS_Store
-grz_upload.egg-info/*
+*.egg-info/
+*.pyc
