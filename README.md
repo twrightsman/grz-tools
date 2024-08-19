@@ -1,9 +1,8 @@
-
 # My Package
 
 A tool to encrypt and upload files to S3 with MD5 checksum logging.
 
-## Table of Contents
+## Table of Co>ntents
 
 - [Introduction](#introduction)
 - [Features](#features)
@@ -20,7 +19,7 @@ A tool to encrypt and upload files to S3 with MD5 checksum logging.
 
 ## Introduction
 
-This tool provides a streamlined way to encrypt files using the `crypt4gh` library, calculate MD5 checksums for both the original and encrypted files, and upload the encrypted files to an Amazon S3 bucket. It also logs the progress and outcomes of these operations in a metadata file.
+This tool provides a streamlined way to encrypt files using the `crypt4gh` library, calculate MD5 checksums for both the original and encrypted files, and upload the encrypted files to an S3 bucket. It also logs the progress and outcomes of these operations in a metadata file.
 
 ## Features
 
@@ -35,6 +34,12 @@ To install this package, download the `grz_upload.zip` file and install it using
 
 ```bash
 pip install grz_upload.zip
+```
+
+to test edits to the code, you can use
+
+```bash
+pip install -e grz_upload.zip
 ```
 
 ## Usage
@@ -52,7 +57,10 @@ encrypt-upload --config path/to/config.yaml
 The configuration file (in YAML format) should include the following parameters:
 
 - `metadata_file_path`: Path to the metadata CSV file containing file details.
-- `public_key_path`: Path to the public key used for encryption.
+- `public_key_path`: Path to the grz public key used for encryption.
+- `s3_url`: Address for your S3 endpoint
+- `s3_access_key`: Users access key for S3
+- `s3_secret`: Users secret for S3
 - `s3_bucket`: Name of the S3 bucket where encrypted files will be uploaded.
 
 Example `config.yaml`:
@@ -60,7 +68,10 @@ Example `config.yaml`:
 ```yaml
 metadata_file_path: 'path/to/metadata_file.csv'
 public_key_path: 'path/to/public/key'
+s3_url: 'your-s3-url'
 s3_bucket: 'your-s3-bucket-name'
+s3_access_key: 'your-s3-bucket-key'
+s3_secret: 'your-s3-bucket-secret'
 ```
 
 ## Example
@@ -116,4 +127,10 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## Acknowledgements
 
-<!-- Add any acknowledgements or references to third-party tools, libraries, or inspirations for this project -->
+parts of cryp4gh code is used in modified form
+
+# To Do
+- logging not working properly
+- check if file id has extension, add correct extension and .c4gh
+- catch user interruption and kill multipart upload
+- check for all open multipart uploads and clean them
