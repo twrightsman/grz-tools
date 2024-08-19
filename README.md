@@ -1,4 +1,4 @@
-# My Package
+# GRZ Upload
 
 A tool to encrypt and upload files to S3 with MD5 checksum logging.
 
