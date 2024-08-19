@@ -1,62 +1,40 @@
 import unittest
-from unittest.mock import patch, mock_open, MagicMock
-import hashlib
-import os
-from my_package.encrypt_upload import encrypt_and_upload_files
+from unittest.mock import patch, MagicMock
+import io
+from your_module import prepare_header, encrypt_part, stream_encrypt_and_upload
 
 class TestEncryptUpload(unittest.TestCase):
 
-    @patch('my_package.encrypt_upload.boto3.client')
-    @patch('builtins.open', new_callable=mock_open, read_data=b'This is a test file.')
-    @patch('crypt4gh.keys.get_public_key')
-    def test_encrypt_and_upload_files(self, mock_get_public_key, mock_open_file, mock_boto_client):
-        # Mock the S3 client
-        mock_s3_client = MagicMock()
-        mock_boto_client.return_value = mock_s3_client
+    @patch('your_module.boto3.client')
+    def test_stream_encrypt_and_upload(self, mock_boto_client):
+        # Set up
+        mock_s3_client = mock_boto_client.return_value
+        mock_s3_client.create_multipart_upload.return_value = {'UploadId': 'test-upload-id'}
+        mock_s3_client.upload_part.return_value = {'ETag': 'test-etag'}
 
-        # Mock the public key
-        mock_get_public_key.return_value = b'mock_public_key'
+        # Call function
+        keys = (0, b'seckey', b'pubkey')
+        header_info = prepare_header(keys)
+        original_md5, encrypted_md5 = stream_encrypt_and_upload(
+            'test_file.txt', 'test_file_id', keys, mock_s3_client, 'test-bucket', 'test_log.log'
+        )
 
-        # Mock configuration
-        metadata_file_path = 'test_metadata.csv'
-        public_key_path = 'mock_public_key_path'
-        s3_bucket = 'mock_s3_bucket'
+        # Assertions
+        mock_s3_client.create_multipart_upload.assert_called_once_with(Bucket='test-bucket', Key='test_file_id')
+        self.assertEqual(len(mock_s3_client.upload_part.call_args_list), 1)
+        mock_s3_client.complete_multipart_upload.assert_called_once()
 
-        # Create a mock metadata file
-        metadata_content = 'file_path,s3_key\n/path/to/file1,s3_key1\n/path/to/file2,s3_key2\n'
-        with patch('builtins.open', new_callable=mock_open, read_data=metadata_content) as mock_metadata_file:
-            # Run the function
-            encrypt_and_upload_files(metadata_file_path, public_key_path, s3_bucket)
+    def test_encrypt_part(self):
+        session_key = b'session_key'
+        data = b'1234567890' * 65536  # 640 KB of data
+        encrypted_data = encrypt_part(data, session_key)
+        self.assertTrue(len(encrypted_data) > len(data))
 
-            # Ensure files are opened correctly
-            mock_open_file.assert_called_with('/path/to/file1', 'rb')
-
-            # Ensure S3 upload is called
-            self.assertTrue(mock_s3_client.upload_fileobj.called)
-
-    def test_md5_checksum(self):
-        # Create a test file content
-        test_content = b'This is a test file.'
-
-        # Calculate MD5 manually
-        md5_hash = hashlib.md5()
-        md5_hash.update(test_content)
-        expected_md5 = md5_hash.hexdigest()
-
-        # Write content to a temporary file
-        temp_file_path = 'temp_test_file'
-        with open(temp_file_path, 'wb') as f:
-            f.write(test_content)
-
-        # Read file and calculate MD5 using the script's function
-        calculated_md5 = hashlib.md5()
-        with open(temp_file_path, 'rb') as f:
-            for chunk in iter(lambda: f.read(4096), b""):
-                calculated_md5.update(chunk)
-
-        os.remove(temp_file_path)
-
-        self.assertEqual(calculated_md5.hexdigest(), expected_md5)
+    def test_prepare_header(self):
+        keys = ((0, b'seckey', b'pubkey'),)
+        header, session_key, keys = prepare_header(keys)
+        self.assertTrue(len(header) > 0)
+        self.assertEqual(len(session_key), 32)
 
 if __name__ == '__main__':
     unittest.main()
