@@ -2,7 +2,7 @@
 
 A tool to encrypt and upload files to S3 with MD5 checksum logging.
 
-## Table of Co>ntents
+## Table of Contents
 
 - [Introduction](#introduction)
 - [Features](#features)
