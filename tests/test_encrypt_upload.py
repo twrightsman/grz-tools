@@ -1,7 +1,7 @@
 import unittest
 from unittest.mock import patch, MagicMock
 import io
-from your_module import prepare_header, encrypt_part, stream_encrypt_and_upload
+from encrypt_upload import prepare_header, encrypt_part, stream_encrypt_and_upload
 
 class TestEncryptUpload(unittest.TestCase):
 
