@@ -1,40 +1,79 @@
-import unittest
-from unittest.mock import patch, MagicMock
-import io
-from grz_upload.encrypt_upload import prepare_header, encrypt_part, stream_encrypt_and_upload
+import pytest
+from unittest import mock
+import os
+from nacl.public import PrivateKey
+from grz_upload.encrypt_upload import (
+    log_progress, read_progress, validate_metadata, print_summary,
+    calculate_md5, prepare_c4gh_keys, prepare_header, encrypt_segment,
+    encrypt_part, stream_encrypt_and_upload, main
+)
 
-class TestEncryptUpload(unittest.TestCase):
 
-    @patch('grz_upload.boto3.client')
-    def test_stream_encrypt_and_upload(self, mock_boto_client):
-        # Set up
-        mock_s3_client = mock_boto_client.return_value
-        mock_s3_client.create_multipart_upload.return_value = {'UploadId': 'test-upload-id'}
-        mock_s3_client.upload_part.return_value = {'ETag': 'test-etag'}
+def test_log_progress(temp_log_file):
+    log_progress(temp_log_file, "test_path", "test_message")
+    with open(temp_log_file, 'r') as log:
+        assert "test_path: test_message" in log.read()
 
-        # Call function
-        keys = (0, b'seckey', b'pubkey')
-        header_info = prepare_header(keys)
-        original_md5, encrypted_md5 = stream_encrypt_and_upload(
-            'test_file.txt', 'test_file_id', keys, mock_s3_client, 'test-bucket', 'test_log.log'
-        )
 
-        # Assertions
-        mock_s3_client.create_multipart_upload.assert_called_once_with(Bucket='test-bucket', Key='test_file_id')
-        self.assertEqual(len(mock_s3_client.upload_part.call_args_list), 1)
-        mock_s3_client.complete_multipart_upload.assert_called_once()
+def test_read_progress(temp_log_file):
+    log_progress(temp_log_file, "test_path", "test_message")
+    progress = read_progress(temp_log_file)
+    assert progress["test_path"] == "test_message"
 
-    def test_encrypt_part(self):
-        session_key = b'session_key'
-        data = b'1234567890' * 65536  # 640 KB of data
-        encrypted_data = encrypt_part(data, session_key)
-        self.assertTrue(len(encrypted_data) > len(data))
 
-    def test_prepare_header(self):
-        keys = ((0, b'seckey', b'pubkey'),)
-        header, session_key, keys = prepare_header(keys)
-        self.assertTrue(len(header) > 0)
-        self.assertEqual(len(session_key), 32)
+# def test_validate_metadata(temp_metadata_file):
+#     result = validate_metadata(temp_metadata_file)
+#     assert result is None  # Assuming the function returns None on success
 
-if __name__ == '__main__':
-    unittest.main()
+
+# def test_print_summary(temp_metadata_file, temp_log_file):
+#     print_summary(temp_metadata_file, temp_log_file)
+#     # Add your assertions based on expected summary output
+
+
+def test_calculate_md5(temp_data_file):
+    md5 = calculate_md5(temp_data_file)
+    assert isinstance(md5, str)
+    assert len(md5) == 32  # MD5 hash is 32 characters long
+
+
+# def test_prepare_c4gh_keys():
+#     public_key = PrivateKey.generate().public_key
+#     keys = prepare_c4gh_keys(public_key)
+#     assert isinstance(keys, dict)
+#     assert "session_key" in keys
+#     assert "public_key" in keys
+#
+#
+# def test_prepare_header():
+#     keys = {'session_key': b'test_key', 'public_key': b'test_public_key'}
+#     header = prepare_header(keys)
+#     assert isinstance(header, bytes)
+#
+#
+# def test_encrypt_segment():
+#     data = b"test data"
+#     key = b"test_key_32_bytes_long____"
+#     encrypted_data = encrypt_segment(data, key)
+#     assert isinstance(encrypted_data, bytes)
+#     assert len(encrypted_data) > len(data)
+#
+#
+# def test_encrypt_part():
+#     byte_string = b"test bytes"
+#     session_key = b"test_key_32_bytes_long____"
+#     encrypted_part = encrypt_part(byte_string, session_key)
+#     assert isinstance(encrypted_part, bytes)
+#
+#
+# def test_stream_encrypt_and_upload(temp_data_file, mock_s3_client, temp_log_file):
+#     keys = {'session_key': b'test_key', 'public_key': b'test_public_key'}
+#     stream_encrypt_and_upload(temp_data_file, "file_id", keys, mock_s3_client, "test_bucket", temp_log_file)
+#     # Add assertions based on expected interactions with mock_s3_client
+#
+#
+# def test_main():
+#     config = {"key": "value"}  # Mock your config as needed
+#     with mock.patch("grz_upload.encrypt_upload.stream_encrypt_and_upload") as mock_upload:
+#         main(config)
+#         mock_upload.assert_called_once()

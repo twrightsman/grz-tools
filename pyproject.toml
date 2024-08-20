@@ -33,5 +33,5 @@ encrypt-upload = "grz_upload.encrypt_upload:main"
 
 [project.optional-dependencies]
 dev = [
-    "unittest"
+    "pytest"
 ]
