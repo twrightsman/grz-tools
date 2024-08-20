@@ -5,7 +5,7 @@ from grz_upload.encrypt_upload import prepare_header, encrypt_part, stream_encry
 
 class TestEncryptUpload(unittest.TestCase):
 
-    @patch('your_module.boto3.client')
+    @patch('grz_upload.boto3.client')
     def test_stream_encrypt_and_upload(self, mock_boto_client):
         # Set up
         mock_s3_client = mock_boto_client.return_value
