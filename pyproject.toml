@@ -12,7 +12,10 @@ authors = [
     { name = "Koray Kirli", email = "koraykirli@gmail.com" }
 ]
 dependencies = [
-
+    "boto3",
+    "crypt4gh",
+    "pyyaml",
+    "click"
 ]
 classifiers = [
     "Programming Language :: Python :: 3",
