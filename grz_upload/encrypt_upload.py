@@ -103,9 +103,6 @@ def encrypt_segment(data, key):
     """Encrypt 64kb block with crypt4gh"""
     nonce = os.urandom(12)
     encrypted_data = crypto_aead_chacha20poly1305_ietf_encrypt(data, None, nonce, key)
-    print('input', len(data))
-    print('nonce', len(nonce))
-    print('enc', len(encrypted_data))
     return(nonce+encrypted_data)
 
 
