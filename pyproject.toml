@@ -22,7 +22,7 @@ classifiers = [
     "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent"
 ]
-requires-python = ">=3.6"
+requires-python = ">=3.10"
 keywords = ["encryption", "S3", "checksum", "upload"]
 
 [project.urls]

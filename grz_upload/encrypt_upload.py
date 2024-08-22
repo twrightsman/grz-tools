@@ -8,6 +8,7 @@ from nacl.public import PrivateKey
 from nacl.bindings import crypto_aead_chacha20poly1305_ietf_encrypt
 from crypt4gh.keys import get_public_key
 import crypt4gh.header as header
+from typing import Dict, List, Tuple
 
 
 # Constants
@@ -17,12 +18,12 @@ VERSION = 1
 SEGMENT_SIZE = 65536
 
 
-def log_progress(log_file, file_path, message):
+def log_progress(log_file: str, file_path: str, message: str) -> None:
     with open(log_file, 'a') as log:
         log.write(f"{file_path}: {message}\n")
 
 
-def read_progress(log_file):
+def read_progress(log_file: str) -> Dict[str, str]:
     progress = {}
     if os.path.exists(log_file):
         with open(log_file, 'r') as log:
@@ -32,7 +33,7 @@ def read_progress(log_file):
     return progress
 
 
-def validate_metadata(metadata_file_path):
+def validate_metadata(metadata_file_path: str) -> int:
     """Validate the fields exist and filepaths are reachable."""
     # what fields to check
     required_fields = ['File id', 'File Location']
@@ -56,7 +57,7 @@ def validate_metadata(metadata_file_path):
     return files_count
 
 
-def print_summary(metadata_file_path, log_file):
+def print_summary(metadata_file_path: str, log_file: str) -> None:
     progress = read_progress(log_file)
     total_files = validate_metadata(metadata_file_path)
     uploaded_files = sum(1 for status in progress.values() if status == 'finished')
@@ -69,7 +70,7 @@ def print_summary(metadata_file_path, log_file):
     print(f"Waiting files: {waiting_files}")
 
 
-def calculate_md5(file_path, chunk_size=4096):
+def calculate_md5(file_path: str, chunk_size: int = 4096) -> str:
     """Calculate the MD5 hash of a file in chunks."""
     md5_hash = hashlib.md5()
     with open(file_path, 'rb') as f:
@@ -78,8 +79,8 @@ def calculate_md5(file_path, chunk_size=4096):
     return md5_hash.hexdigest()
 
 
-def prepare_c4gh_keys(public_key):
-    """prepare the key format c4gh needs, while it can contain
+def prepare_c4gh_keys(public_key: str) -> Tuple[Tuple[int, bytes, bytes]]:
+    """Prepare the key format c4gh needs, while it can contain
     multiple keys for multiple recipients, in our use case there is
     a single recipient"""
     sk = PrivateKey.generate()
@@ -88,7 +89,7 @@ def prepare_c4gh_keys(public_key):
     return keys
 
 
-def prepare_header(keys):
+def prepare_header(keys: Tuple[Tuple[int, bytes, bytes]]) -> Tuple[bytes, bytes, Tuple[Tuple[int, bytes, bytes]]]:
     """Prepare header separately to be able to use multiupload"""
     encryption_method = 0  # only choice for this version
     session_key = os.urandom(32)  # we use one session key for all blocks
@@ -99,15 +100,15 @@ def prepare_header(keys):
     return (header_bytes, session_key, keys)
 
 
-def encrypt_segment(data, key):
+def encrypt_segment(data: bytes, key: bytes) -> bytes:
     """Encrypt 64kb block with crypt4gh"""
     nonce = os.urandom(12)
     encrypted_data = crypto_aead_chacha20poly1305_ietf_encrypt(data, None, nonce, key)
-    return(nonce+encrypted_data)
+    return nonce + encrypted_data
 
 
-def encrypt_part(byte_string, session_key):
-    '''Encrypt incoming chunk, using session_key'''
+def encrypt_part(byte_string: bytes, session_key: bytes) -> bytes:
+    """Encrypt incoming chunk, using session_key"""
     data_size = len(byte_string)
     enc_data = b''
     position = 0
@@ -126,7 +127,13 @@ def encrypt_part(byte_string, session_key):
     return enc_data
 
 
-def stream_encrypt_and_upload(file_location, file_id, keys, s3_client, s3_bucket, log_file):
+def stream_encrypt_and_upload(file_location: str, 
+                              file_id: str, 
+                              keys: Tuple[Tuple[int, bytes, bytes]],
+                              s3_client: boto3.client, 
+                              s3_bucket: str, 
+                              log_file: str
+                              ) -> Tuple[str, str]:
     """Encrypt and upload the file in chunks, properly handling the Crypt4GH header."""
     # Generate the header
 
@@ -153,6 +160,7 @@ def stream_encrypt_and_upload(file_location, file_id, keys, s3_client, s3_bucket
                 # add header to the first chunk
                 if not first_chunk_read:
                     encrypted_chunk = header_info[0] + encrypted_chunk
+                    first_chunk_read = True
                 encrypted_md5.update(encrypted_chunk)
 
                 # Upload each encrypted chunk
@@ -187,9 +195,13 @@ def stream_encrypt_and_upload(file_location, file_id, keys, s3_client, s3_bucket
         raise e
 
 
-def encrypt_and_upload_files(metadata_file_path, public_key_path,
-                             s3_client, s3_bucket, log_file):
-    # Validate metadata and print summary
+def encrypt_and_upload_files(
+        metadata_file_path: str,
+        public_key_path: str,
+        s3_client: boto3.client,
+        s3_bucket: str,
+        log_file: str
+        ) -> None:
     print_summary(metadata_file_path, log_file)
 
     # prepare symetric key pack for Crypt4GH
@@ -243,7 +255,7 @@ def encrypt_and_upload_files(metadata_file_path, public_key_path,
 
 @click.command()
 @click.option('--config', default='config.yaml', help='Path to the configuration file.')
-def main(config):
+def main(config: str) -> None:
     # Load configuration
     with open(config, 'r') as config_file:
         config = yaml.safe_load(config_file)
