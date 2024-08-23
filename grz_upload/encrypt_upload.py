@@ -1,9 +1,9 @@
 import hashlib
-import boto3
+import os
 import csv
 import yaml
 import click
-import os
+import boto3
 from nacl.public import PrivateKey
 from nacl.bindings import crypto_aead_chacha20poly1305_ietf_encrypt
 from crypt4gh.keys import get_public_key
@@ -19,15 +19,18 @@ SEGMENT_SIZE = 65536
 Key = tuple[int, bytes, bytes]
 Md5 = str
 
+
 def log_progress(log_file: str, file_path: str, message: str) -> None:
-    with open(log_file, 'a') as log:
+    """write progress to a log file"""
+    with open(log_file, 'a', encoding="utf-8") as log:
         log.write(f"{file_path}: {message}\n")
 
 
 def read_progress(log_file: str) -> dict[str, str]:
+    """read progress from the log file"""
     progress = {}
     if os.path.exists(log_file):
-        with open(log_file, 'r') as log:
+        with open(log_file, 'r', encoding="utf-8") as log:
             for line in log:
                 file_path, status = line.strip().split(": ", 1)
                 progress[file_path] = status
@@ -38,7 +41,7 @@ def validate_metadata(metadata_file_path: str) -> int:
     """Validate the fields exist and filepaths are reachable."""
     # what fields to check
     required_fields = ['File id', 'File Location']
-    with open(metadata_file_path, 'r') as csvfile:
+    with open(metadata_file_path, 'r', encoding="utf-8") as csvfile:
         # make sure all values are filled
         reader = csv.DictReader(csvfile, delimiter=',')
         # Check for required fields
@@ -59,6 +62,7 @@ def validate_metadata(metadata_file_path: str) -> int:
 
 
 def print_summary(metadata_file_path: str, log_file: str) -> None:
+    """Print summary of the progress with file uploads"""
     progress = read_progress(log_file)
     total_files = validate_metadata(metadata_file_path)
     uploaded_files = sum(1 for status in progress.values() if status == 'finished')
@@ -128,16 +132,15 @@ def encrypt_part(byte_string: bytes, session_key: bytes) -> bytes:
     return enc_data
 
 
-def stream_encrypt_and_upload(file_location: str, 
-                              file_id: str, 
+def stream_encrypt_and_upload(file_location: str,
+                              file_id: str,
                               keys: tuple[Key],
-                              s3_client: boto3.client, 
-                              s3_bucket: str, 
-                              log_file: str
+                              s3_client: boto3.client,
+                              s3_bucket: str,
+                              log_file: str,
+                              multipart_chunk_size: int=  MULTIPART_CHUNK_SIZE
                               ) -> tuple[Md5, Md5]:
     """Encrypt and upload the file in chunks, properly handling the Crypt4GH header."""
-    # Generate the header
-
     multipart_upload = s3_client.create_multipart_upload(Bucket=s3_bucket, Key=file_id)
     upload_id = multipart_upload['UploadId']
     parts = []
@@ -155,7 +158,7 @@ def stream_encrypt_and_upload(file_location: str,
             first_chunk_read = False
 
             # Process and encrypt the file in chunks
-            while chunk := infile.read(MULTIPART_CHUNK_SIZE):
+            while chunk := infile.read(multipart_chunk_size):
                 original_md5.update(chunk)
                 encrypted_chunk = encrypt_part(chunk, header_info[1])
                 # add header to the first chunk
@@ -202,19 +205,20 @@ def encrypt_and_upload_files(
         s3_bucket: str,
         log_file: str
         ) -> None:
+    """Main function that does uploads one by one according to the metadata file"""
     print_summary(metadata_file_path, log_file)
 
     # prepare symetric key pack for Crypt4GH
     keys = prepare_c4gh_keys(public_key_path)
 
     # Read the metadata file and process each file
-    with open(metadata_file_path, 'r') as csvfile:
+    with open(metadata_file_path, 'r', encoding="utf-8") as csvfile:
         reader = csv.DictReader(csvfile, delimiter=',')
         fieldnames = reader.fieldnames + ['original_md5', 'encrypted_md5', 'upload_status']
 
         # Create a temporary file to store progress
         temp_metadata_file_path = metadata_file_path + '.tmp'
-        with open(temp_metadata_file_path, 'w', newline='') as temp_csvfile:
+        with open(temp_metadata_file_path, 'w', newline='', encoding="utf-8") as temp_csvfile:
             writer = csv.DictWriter(temp_csvfile, fieldnames=fieldnames, delimiter=',')
             writer.writeheader()
 
@@ -259,8 +263,9 @@ def encrypt_and_upload_files(
               type=click.Path(exists=True),
               help='Path to the configuration file.')
 def main(config: str) -> None:
+    """Read config, extract parameters and call encrypt and upload function."""
     # Load configuration
-    with open(config, 'r') as config_file:
+    with open(config, 'r', encoding="utf-8") as config_file:
         config = yaml.safe_load(config_file)
 
     # Initialize S3 client for uploading
@@ -279,4 +284,5 @@ def main(config: str) -> None:
 
 
 if __name__ == "__main__":
+    # pylint: disable=no-value-for-parameter
     main()
