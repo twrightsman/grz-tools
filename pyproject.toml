@@ -33,5 +33,78 @@ encrypt-upload = "grz_upload.encrypt_upload:main"
 
 [project.optional-dependencies]
 dev = [
-    "pytest"
+    "pytest",
+    "moto[s3]"
 ]
+
+[tool.ruff]
+exclude = [
+    ".git",
+    ".devcontainer",
+    "__pycache__",
+    "build",
+    "dist",
+]
+line-length = 88
+src = [
+    "src",
+    "tests"
+]
+target-version = "py310"
+
+[tool.ruff.lint]
+fixable = [
+    "UP",
+    "I",
+    "D",
+]
+ignore = [
+    "E111",
+    "E114",
+    "E116",
+    "PLW",
+    "RUF001",
+    "RUF010",
+    "RUF012",
+    "N818",
+    "B008",
+    "PLR2004",
+    "D205",
+    "D400",
+    "D401",
+    "D107",
+    "D206",
+    "D300",
+    "UP040",
+]
+select = [
+    "C90",
+    "F",
+    "I",
+    "S",
+    "B",
+    "N",
+    "UP",
+    "PL",
+    "RUF",
+    "SIM",
+    "D",
+]
+
+[tool.ruff.lint.mccabe]
+max-complexity = 10
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = [
+    "S",
+    "SIM",
+    "PLR",
+    "B011",
+    "D103"
+]
+"__init__.py" = [
+    "D",
+]
+
+[tool.ruff.lint.pydocstyle]
+convention = "pep257"

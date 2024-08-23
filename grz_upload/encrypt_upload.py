@@ -1,13 +1,14 @@
+import csv  # noqa: D100
 import hashlib
 import os
-import csv
-import yaml
-import click
+
 import boto3
-from nacl.public import PrivateKey
-from nacl.bindings import crypto_aead_chacha20poly1305_ietf_encrypt
+import click
+import yaml
+from crypt4gh import header
 from crypt4gh.keys import get_public_key
-import crypt4gh.header as header
+from nacl.bindings import crypto_aead_chacha20poly1305_ietf_encrypt
+from nacl.public import PrivateKey
 
 # Constants
 MULTIPART_CHUNK_SIZE = 50 * 1024 * 1024  # 50 MB
@@ -21,16 +22,16 @@ Md5 = str
 
 
 def log_progress(log_file: str, file_path: str, message: str) -> None:
-    """write progress to a log file"""
+    """Write progress to a log file"""
     with open(log_file, 'a', encoding="utf-8") as log:
         log.write(f"{file_path}: {message}\n")
 
 
 def read_progress(log_file: str) -> dict[str, str]:
-    """read progress from the log file"""
+    """Read progress from the log file"""
     progress = {}
     if os.path.exists(log_file):
-        with open(log_file, 'r', encoding="utf-8") as log:
+        with open(log_file, encoding="utf-8") as log:
             for line in log:
                 file_path, status = line.strip().split(": ", 1)
                 progress[file_path] = status
@@ -41,7 +42,7 @@ def validate_metadata(metadata_file_path: str) -> int:
     """Validate the fields exist and filepaths are reachable."""
     # what fields to check
     required_fields = ['File id', 'File Location']
-    with open(metadata_file_path, 'r', encoding="utf-8") as csvfile:
+    with open(metadata_file_path, encoding="utf-8") as csvfile:
         # make sure all values are filled
         reader = csv.DictReader(csvfile, delimiter=',')
         # Check for required fields
@@ -77,7 +78,7 @@ def print_summary(metadata_file_path: str, log_file: str) -> None:
 
 def calculate_md5(file_path: str, chunk_size: int = 4096) -> Md5:
     """Calculate the MD5 hash of a file in chunks."""
-    md5_hash = hashlib.md5()
+    md5_hash = hashlib.md5()  # noqa: S324
     with open(file_path, 'rb') as f:
         for chunk in iter(lambda: f.read(chunk_size), b""):
             md5_hash.update(chunk)
@@ -87,7 +88,8 @@ def calculate_md5(file_path: str, chunk_size: int = 4096) -> Md5:
 def prepare_c4gh_keys(public_key: str) -> tuple[Key]:
     """Prepare the key format c4gh needs, while it can contain
     multiple keys for multiple recipients, in our use case there is
-    a single recipient"""
+    a single recipient
+    """
     sk = PrivateKey.generate()
     seckey = bytes(sk)
     keys = ((0, seckey, get_public_key(public_key)), )
@@ -148,8 +150,8 @@ def stream_encrypt_and_upload(file_location: str,
 
     try:
         # Initialize MD5 calculations
-        original_md5 = hashlib.md5()
-        encrypted_md5 = hashlib.md5()
+        original_md5 = hashlib.md5()  # noqa: S324
+        encrypted_md5 = hashlib.md5()  # noqa: S324
 
         with open(file_location, 'rb') as infile:
             # prepare header
@@ -212,7 +214,7 @@ def encrypt_and_upload_files(
     keys = prepare_c4gh_keys(public_key_path)
 
     # Read the metadata file and process each file
-    with open(metadata_file_path, 'r', encoding="utf-8") as csvfile:
+    with open(metadata_file_path, encoding="utf-8") as csvfile:
         reader = csv.DictReader(csvfile, delimiter=',')
         fieldnames = reader.fieldnames + ['original_md5', 'encrypted_md5', 'upload_status']
 
@@ -265,7 +267,7 @@ def encrypt_and_upload_files(
 def main(config: str) -> None:
     """Read config, extract parameters and call encrypt and upload function."""
     # Load configuration
-    with open(config, 'r', encoding="utf-8") as config_file:
+    with open(config, encoding="utf-8") as config_file:
         config = yaml.safe_load(config_file)
 
     # Initialize S3 client for uploading
