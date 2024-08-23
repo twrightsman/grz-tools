@@ -23,7 +23,7 @@ def log_progress(log_file: str, file_path: str, message: str) -> None:
         log.write(f"{file_path}: {message}\n")
 
 
-def read_progress(log_file: str) -> Dict[str, str]:
+def read_progress(log_file: str) -> dict[str, str]:
     progress = {}
     if os.path.exists(log_file):
         with open(log_file, 'r') as log:
