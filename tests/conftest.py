@@ -1,77 +1,81 @@
+import os  # noqa: D100
+from shutil import copyfile
+
 import pytest
-import tempfile
-import os
-import boto3
-from unittest.mock import patch, MagicMock
-import yaml
-from unittest import mock
+
+config_path = "tests/mock_files/mock_config.yaml"
+input_path = "tests/mock_files/mock_input_file.txt"
+metadata_path = "tests/mock_files/mock_metadata.csv"
+private_key_path = "tests/mock_files/mock_private_key.sec"
+public_key_path = "tests/mock_files/mock_public_key.pub"
+
+
+@pytest.fixture(scope='session')
+def datadir(tmpdir_factory):
+    """Create temporary folder for the session"""
+    datadir = tmpdir_factory.mktemp('data')
+    return datadir
+
+
+def copy_file_to_tempdir(input_path, datadir):  # noqa: F821
+    print(datadir)
+    filename = os.path.basename(input_path)
+    target = datadir.join(filename)
+    copyfile(input_path, target)
+    return target
 
 
 @pytest.fixture
-def temp_log_file(tmpdir):
-    log_file = tmpdir.join("log.txt")
+def temp_log_file(datadir):
+    print(datadir)
+    log_file = datadir.join("log.txt")
     return str(log_file)
 
 
 @pytest.fixture
-def temp_metadata_file(tmpdir):
-    metadata_file = tmpdir.join("metadata.csv")
-    metadata_file.write("File id,File Location\n1,/path/to/file\n")
+def temp_input_file(datadir):
+    print(datadir)
+    return copy_file_to_tempdir(input_path, datadir)
+
+
+@pytest.fixture
+def temp_private_key_file( datadir):
+    print(datadir)
+    return copy_file_to_tempdir(private_key_path, datadir)
+
+
+@pytest.fixture
+def temp_public_key_file(datadir):
+    return copy_file_to_tempdir(public_key_path, datadir)
+
+
+metadata_content = """File id,File Location
+test_file,replace_dir/mock_input_file.txt"""
+
+
+@pytest.fixture
+def temp_metadata_file(datadir):
+    print(datadir)
+    metadata_file = datadir.join("mock_metadata.csv")
+    print(metadata_file)
+    with open(metadata_file, 'w') as f:
+        f.write(metadata_content.replace("replace_dir", str(datadir)))
     return str(metadata_file)
 
 
-@pytest.fixture
-def temp_data_file(tmpdir):
-    data_file = tmpdir.join("data.txt")
-    data_file.write("This is a test.")
-    return str(data_file)
+config_content = """metadata_file_path: 'replace_dir/mock_metadata.csv'
+public_key_path: 'replace_dir/mock_public_key.pub'
+s3_url: 'testing'
+s3_bucket: 'testing'
+s3_access_key: 'testing'
+s3_secret: 'testing'"""
 
 
 @pytest.fixture
-def mock_s3_client():
-    with mock.patch('boto3.client') as mock_client:
-        yield mock_client
-
-
-# mocking with moto
-#
-# import pathlib
-# from tempfile import NamedTemporaryFile
-#
-# import boto3
-# import moto
-# import pytest
-# from botocore.exceptions import ClientError
-#
-# from os_bucket import OSBucket
-#
-#
-# @pytest.fixture
-# def empty_bucket():
-#     moto_fake = moto.mock_s3()
-#     try:
-#         moto_fake.start()
-#         conn = boto3.resource('s3')
-#         conn.create_bucket(Bucket="OS_BUCKET")  # or the name of the bucket you use
-#         yield conn
-#     finally:
-#         moto_fake.stop()
-#
-#
-# def test_download_non_existing_path(empty_bucket):
-#     os_bucket = OSBucket()
-#     os_bucket.initBucket()
-#     with pytest.raises(ClientError) as e:
-#         os_bucket.download_file("bad_path", "bad_file")
-#     assert "Not Found" in str(e)
-#
-#
-# def test_upload_and_download(empty_bucket):
-#     os_bucket = OSBucket()
-#     os_bucket.initBucket()
-#     with NamedTemporaryFile() as tmp:
-#         tmp.write(b'Hi')
-#         file_name = pathlib.Path(tmp.name).name
-#
-#         os_bucket.upload_file(tmp.name, file_name)
-#         os_bucket.download_file("/" + file_name, file_name)  # this might indicate a bug in the implementation
+def temp_config_file(datadir):
+    print(datadir)
+    config_file = datadir.join("config.yaml")
+    print(config_file)
+    with open(config_file, 'w') as f:
+        f.write(config_content.replace("replace_dir", str(datadir)))
+    return str(config_file)
