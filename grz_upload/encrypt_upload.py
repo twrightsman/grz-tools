@@ -8,8 +8,6 @@ from nacl.public import PrivateKey
 from nacl.bindings import crypto_aead_chacha20poly1305_ietf_encrypt
 from crypt4gh.keys import get_public_key
 import crypt4gh.header as header
-from typing import Dict, List, Tuple
-
 
 # Constants
 MULTIPART_CHUNK_SIZE = 50 * 1024 * 1024  # 50 MB
@@ -17,6 +15,9 @@ MULTIPART_CHUNK_SIZE = 50 * 1024 * 1024  # 50 MB
 VERSION = 1
 SEGMENT_SIZE = 65536
 
+# Define additional types
+Key = tuple[int, bytes, bytes]
+Md5 = str
 
 def log_progress(log_file: str, file_path: str, message: str) -> None:
     with open(log_file, 'a') as log:
@@ -70,7 +71,7 @@ def print_summary(metadata_file_path: str, log_file: str) -> None:
     print(f"Waiting files: {waiting_files}")
 
 
-def calculate_md5(file_path: str, chunk_size: int = 4096) -> str:
+def calculate_md5(file_path: str, chunk_size: int = 4096) -> Md5:
     """Calculate the MD5 hash of a file in chunks."""
     md5_hash = hashlib.md5()
     with open(file_path, 'rb') as f:
@@ -79,7 +80,7 @@ def calculate_md5(file_path: str, chunk_size: int = 4096) -> str:
     return md5_hash.hexdigest()
 
 
-def prepare_c4gh_keys(public_key: str) -> Tuple[Tuple[int, bytes, bytes]]:
+def prepare_c4gh_keys(public_key: str) -> tuple[Key]:
     """Prepare the key format c4gh needs, while it can contain
     multiple keys for multiple recipients, in our use case there is
     a single recipient"""
@@ -89,7 +90,7 @@ def prepare_c4gh_keys(public_key: str) -> Tuple[Tuple[int, bytes, bytes]]:
     return keys
 
 
-def prepare_header(keys: Tuple[Tuple[int, bytes, bytes]]) -> Tuple[bytes, bytes, Tuple[Tuple[int, bytes, bytes]]]:
+def prepare_header(keys: tuple[Key]) -> tuple[bytes, bytes, tuple[Key]]:
     """Prepare header separately to be able to use multiupload"""
     encryption_method = 0  # only choice for this version
     session_key = os.urandom(32)  # we use one session key for all blocks
@@ -129,11 +130,11 @@ def encrypt_part(byte_string: bytes, session_key: bytes) -> bytes:
 
 def stream_encrypt_and_upload(file_location: str, 
                               file_id: str, 
-                              keys: Tuple[Tuple[int, bytes, bytes]],
+                              keys: tuple[Key],
                               s3_client: boto3.client, 
                               s3_bucket: str, 
                               log_file: str
-                              ) -> Tuple[str, str]:
+                              ) -> tuple[Md5, Md5]:
     """Encrypt and upload the file in chunks, properly handling the Crypt4GH header."""
     # Generate the header
 
@@ -162,7 +163,6 @@ def stream_encrypt_and_upload(file_location: str,
                     encrypted_chunk = header_info[0] + encrypted_chunk
                     first_chunk_read = True
                 encrypted_md5.update(encrypted_chunk)
-
                 # Upload each encrypted chunk
                 log_progress(log_file, file_location, f'Uploading part {part_number}')
                 part = s3_client.upload_part(
@@ -254,7 +254,10 @@ def encrypt_and_upload_files(
 
 
 @click.command()
-@click.option('--config', default='config.yaml', help='Path to the configuration file.')
+@click.option('--config',
+              default='config.yaml',
+              type=click.Path(exists=True),
+              help='Path to the configuration file.')
 def main(config: str) -> None:
     # Load configuration
     with open(config, 'r') as config_file:
