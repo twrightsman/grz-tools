@@ -8,6 +8,7 @@ import boto3
 import yaml
 from grz_upload.encrypt_upload import (
     SEGMENT_SIZE,
+    Key,
     calculate_md5,
     encrypt_part,
     encrypt_segment,
@@ -20,32 +21,33 @@ from grz_upload.encrypt_upload import (
     validate_metadata,
 )
 from moto import mock_aws
+from pytest import CaptureFixture
 
 # create fixtures from the mock files stored under tests
-# some files get modified, use temdir for storing these temporary copies
+# some files get modified, use a temporary directory for copying temporary versions
 
 
-def test_log_progress(temp_log_file):
+def test_log_progress(temp_log_file: str):
     """Test for log_progress function"""
     log_progress(temp_log_file, "test_path", "test_message")
     with open(temp_log_file, encoding='utf8') as log:
         assert "test_path: test_message" in log.read()
 
 
-def test_read_progress(temp_log_file):
+def test_read_progress(temp_log_file: str):
     """Test for read_progress function"""
     log_progress(temp_log_file, "test_path", "test_message")
     progress = read_progress(temp_log_file)
     assert progress["test_path"] == "test_message"
 
 
-def test_validate_metadata(temp_metadata_file, temp_input_file):
+def test_validate_metadata(temp_metadata_file: str, temp_input_file: str):
     """Assert there is 1 file in the metadata and fields are in place"""
     result = validate_metadata(temp_metadata_file)
     assert result==1 
 
 
-def test_print_summary(temp_metadata_file, temp_log_file, capsys):
+def test_print_summary(temp_metadata_file: str, temp_log_file: str, capsys: CaptureFixture[str]):
     expected_message = """Total files: 1\nUploaded files: 0\nFailed files: 0\nWaiting files: 1\n"""
     print_summary(temp_metadata_file, temp_log_file)
     captured = capsys.readouterr()
@@ -53,14 +55,14 @@ def test_print_summary(temp_metadata_file, temp_log_file, capsys):
     # Add your assertions based on expected summary output
 
 
-def test_calculate_md5(temp_input_file):
+def test_calculate_md5(temp_input_file: str):
     md5 = calculate_md5(temp_input_file)
     assert isinstance(md5, str)
     assert len(md5) == 32  # MD5 hash is 32 characters long
     assert md5 == "710781ec9efd25b87bfbf8d6cf4030e9"
 
 
-def test_prepare_c4gh_keys(temp_public_key_file):
+def test_prepare_c4gh_keys(temp_public_key_file: str):
     keys = prepare_c4gh_keys(temp_public_key_file)
     # single key in tupple
     assert len(keys) == 1
@@ -70,7 +72,7 @@ def test_prepare_c4gh_keys(temp_public_key_file):
     assert len(keys[0][1]) == 32
 
 
-def test_prepare_header(temp_c4gh_keys):
+def test_prepare_header(temp_c4gh_keys: tuple[Key]):
     header_pack = prepare_header(temp_c4gh_keys)
     assert len(header_pack) == 3
     # assert header size
@@ -81,7 +83,7 @@ def test_prepare_header(temp_c4gh_keys):
     assert header_pack[2] == temp_c4gh_keys
 
 
-def test_encrypt_segment(temp_c4gh_header):
+def test_encrypt_segment(temp_c4gh_header: tuple[bytes, bytes, tuple[Key]]):
     data = b"test segment content"
     key = temp_c4gh_header[1]
     encrypted_data = encrypt_segment(data, key)
@@ -90,7 +92,7 @@ def test_encrypt_segment(temp_c4gh_header):
     assert len(encrypted_data) == len(data) + 12 + 16 
 
 
-def test_encrypt_part(temp_input_file, temp_c4gh_header):
+def test_encrypt_part(temp_input_file: str, temp_c4gh_header: tuple[bytes, bytes, tuple[Key]]):
     with open(temp_input_file, 'rb') as infile:
         byte_string = infile.read()
         session_key = temp_c4gh_header[1]
@@ -102,12 +104,12 @@ def test_encrypt_part(temp_input_file, temp_c4gh_header):
     assert encrypted_part_size == len(encrypted_part)
 
 @mock_aws
-def test_stream_encrypt_and_upload(temp_large_input_file,
-                                   temp_c4gh_keys,
-                                   temp_config_file,
-                                   temp_log_file,
-                                   datadir,
-                                   temp_private_key_file):
+def test_stream_encrypt_and_upload(temp_large_input_file: str,
+                                   temp_c4gh_keys: tuple[Key],
+                                   temp_config_file: str,
+                                   temp_log_file: str,
+                                   datadir: str,
+                                   temp_private_key_file: str):
     bucket_name = 'temp_bucket'
     file_id = 'temp_id'
     # create client
@@ -154,7 +156,7 @@ def test_stream_encrypt_and_upload(temp_large_input_file,
     assert denc_md5 == enc_md5
 
 
-def test_cleanup_time(datadir):
+def test_cleanup_time(datadir: str):
     """Delete the temporary files and folders."""
     # Check if the folder exists
     if not os.path.exists(datadir):
