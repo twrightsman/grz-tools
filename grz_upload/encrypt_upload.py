@@ -134,7 +134,7 @@ def encrypt_part(byte_string: bytes, session_key: bytes) -> bytes:
     return enc_data
 
 
-def stream_encrypt_and_upload(file_location: str,
+def stream_encrypt_and_upload(file_location: str,  # noqa: PLR0913
                               file_id: str,
                               keys: tuple[Key],
                               s3_client: boto3.client,
@@ -216,7 +216,7 @@ def encrypt_and_upload_files(
     # Read the metadata file and process each file
     with open(metadata_file_path, encoding="utf-8") as csvfile:
         reader = csv.DictReader(csvfile, delimiter=',')
-        fieldnames = reader.fieldnames + ['original_md5', 'encrypted_md5', 'upload_status']
+        fieldnames = reader.fieldnames + ['original_md5', 'encrypted_md5', 'upload_status']  # noqa: RUF005
 
         # Create a temporary file to store progress
         temp_metadata_file_path = metadata_file_path + '.tmp'
