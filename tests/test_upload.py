@@ -60,3 +60,5 @@ def test_upload(
     # TODO: also test encrypted file md5 sums
     assert md5sums["small_test_file.txt.c4gh"][0] == temp_small_input_file_md5sum
     assert md5sums["large_test_file.fastq.gz.c4gh"][0] == temp_fastq_gz_file_md5sum
+
+    # TODO: Test download and decryption of files

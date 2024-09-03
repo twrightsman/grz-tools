@@ -34,20 +34,19 @@ def test_prepare_submission(temp_metadata_file, temp_config_file, local_submissi
     #     └── small_input_file.txt
 
 
-# TODO: maybe expose the validation as a separate command?
-# def test_validate_submission(temp_metadata_file, temp_config_file):
-#     testargs = [
-#         "grz_upload/cli.py",
-#         "validate-submission",
-#         "-c", temp_config_file,
-#         "--submission_dir", temp_metadata_file,
-#     ]
-#     with patch.object(sys, 'argv', testargs):
-#         grz_upload.cli.main()
-#
-#     # test if command has correctly checked for:
-#     # - mismatched md5sums
-#     # - all files existing
+def test_validate_submission(temp_metadata_file, temp_config_file):
+    testargs = [
+        "grz_upload/cli.py",
+        "validate-submission",
+        "-c", temp_config_file,
+        "--submission_dir", temp_metadata_file,
+    ]
+    with patch.object(sys, 'argv', testargs):
+        grz_upload.cli.main()
+
+    # test if command has correctly checked for:
+    # - mismatched md5sums
+    # - all files existing
 
 
 def test_submission(temp_metadata_file, temp_config_file):
