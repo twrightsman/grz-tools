@@ -9,7 +9,9 @@ description = "A tool to encrypt and upload files to S3 with MD5 checksum loggin
 readme = "README.md"
 license = { text = "MIT" }
 authors = [
-    { name = "Koray Kirli", email = "koraykirli@gmail.com" }
+    { name = "Koray Kirli", email = "koraykirli@gmail.com" },
+    { name = "Mathias Lesche", email = "mathias.lesche(at)tu-dresden.de" },
+    { name = "Florian R. Hölzlwimmer", email = "git.ich@frhoelzlwimmer.de" },
 ]
 dependencies = [
     "boto3",

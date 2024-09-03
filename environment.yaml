@@ -1,0 +1,10 @@
+name: grz-upload-client
+channels:
+  - conda-forge
+  - bioconda
+dependencies:
+  - python >=3.10
+  - boto3
+  - pyyaml
+  - click
+  - python-crypt4gh

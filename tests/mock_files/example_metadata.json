@@ -1,0 +1,78 @@
+{
+  "Comment": "As we have here multiple 1:n relations we could model that to reduce duplicated entries, but I think to ease the process we can have multiple duplicated entries, e.g. pipelines across multuple donors.",
+  "Submittion": {
+    "Comment": "Main Information about submission and submitter.",
+    "submissionDate": "2024-07-15",
+    "submissionType": "initial",
+    "indexCaseId": "aaaaaaaa00000000aaaaaaaa00000000",
+    "submitterId": "260914050",
+    "clinicalDataNodeId": "KDK000001",
+    "labName": "Institute f\u00fcr Humangenetik am Klinikum rechts der Isar"
+  },
+  "Donors": [
+    {
+      "Comment": "We can have multiple donors, e.g. index patient plus family members and each with a different consent.",
+      "localCaseID": "aaaaaaaa00000000aaaaaaaa00000000",
+      "gender": "female",
+      "researchConsentDate": "2024-07-05",
+      "researchConsentPresentedDate": "2024-07-05",
+      "researchConsentVersion": "1.7.1b",
+      "researchConsent": "MII Consent FHIR Resource ID ToDo XXX",
+      "participationConsentGiven": true,
+      "caseIdentificationConsentGiven": true,
+      "reContactConsentGiven": true,
+      "relation": "index patient",
+      "LabData": [
+        {
+          "Comment": "All information about the lab data. We could have multiple tissues or technologies, e.g. blood and tumor or DNA and RNA.",
+          "LabDataName": "Blut DNA normal",
+          "tissueType": "Blut",
+          "sampleType": "fresh-tissue",
+          "sequenceType": "dna",
+          "sequenceSubtype": "germline",
+          "libraryType": "wes",
+          "targetRegionFile": "What do we put here? I advocate for the actuall file. A file path does not help here. If file, I would go with same info as in SequenceData",
+          "fragmentationMethod": "sonication",
+          "libraryPrepkit": "Agilent SureSelect Human All Exon V6",
+          "libraryPrepkitManufacturer": "Agilent",
+          "sequencerModel": "Illumina HiSeq X",
+          "sequencerManufacturer": "Illumina",
+          "kitName": "Illumina NovaSeq S4 flow cell",
+          "kitManufacturer": "Illumina",
+          "barcode": "ATCACG",
+          "endType": "paired-end",
+          "SequenceData": [
+            {
+              "Comment": "The pipeline should be the same for one LabData entity but we can have multiple files.",
+              "bioinformaticsPipelineName": "In-House Pipeline",
+              "referenceGenome": "GRCh38",
+              "bioinformaticsPipelineVersion": "2e70912",
+              "percentBasesQ30": 95.4,
+              "meanDepthOfCoverage": 92.4,
+              "minCoverage": 25.4,
+              "targetedRegionsAboveMinCoverage": 164.5,
+              "files": [
+                {
+                  "filename": "5M.fastq.gz",
+                  "filepath": "<tempdir_path>",
+                  "filetype": "fastq-gz",
+                  "fileChecksum": "<md5sum>",
+                  "fileChecksumType": "md5",
+                  "fileSizeInBytes": 116993
+                },
+                {
+                  "filename": "small_input_file.txt",
+                  "filepath": "<tempdir_path>",
+                  "filetype": "txt",
+                  "fileChecksum": "<md5sum>",
+                  "fileChecksumType": "md5",
+                  "fileSizeInBytes": 116993
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

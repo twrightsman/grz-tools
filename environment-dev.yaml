@@ -1,0 +1,14 @@
+name: grz-upload-client-dev
+channels:
+  - conda-forge
+  - bioconda
+dependencies:
+  - python >=3.10
+  - boto3
+  - pyyaml
+  - click
+  - python-crypt4gh
+  - pytest
+  - pytest-mock
+  - moto
+  - numpy

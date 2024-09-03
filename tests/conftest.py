@@ -1,18 +1,21 @@
+import json
 import os  # noqa: D100
 from shutil import copyfile
 
+import numpy as np
 import pytest
-from grz_upload.encrypt_upload import prepare_c4gh_keys, prepare_header
+
+from grz_upload.file_operations import Crypt4GH
 
 config_path = "tests/mock_files/mock_config.yaml"
-input_path = "tests/mock_files/mock_input_file.txt"
-metadata_path = "tests/mock_files/mock_metadata.csv"
+small_input_path = "tests/mock_files/mock_small_input_file.txt"
+metadata_path = "tests/mock_files/example_metadata.json"
 private_key_path = "tests/mock_files/mock_private_key.sec"
 public_key_path = "tests/mock_files/mock_public_key.pub"
 
 
 @pytest.fixture(scope='session')
-def datadir(tmpdir_factory):
+def data_dir(tmpdir_factory):
     """Create temporary folder for the session"""
     datadir = tmpdir_factory.mktemp('data')
     return datadir
@@ -26,14 +29,19 @@ def copy_file_to_tempdir(input_path, datadir):
 
 
 @pytest.fixture
-def temp_log_file(datadir):
-    log_file = datadir.join("log.txt")
+def temp_log_file(data_dir):
+    log_file = data_dir.join("log.txt")
     return str(log_file)
 
 
 @pytest.fixture
-def temp_input_file(datadir):
-    return copy_file_to_tempdir(input_path, datadir)
+def temp_small_input_file(data_dir):
+    return copy_file_to_tempdir(small_input_path, data_dir)
+
+
+@pytest.fixture()
+def temp_small_input_file_md5sum():
+    return "710781ec9efd25b87bfbf8d6cf4030e9"
 
 
 def create_large_file(input_file, output_file, target_size):
@@ -50,58 +58,113 @@ def create_large_file(input_file, output_file, target_size):
 
 
 @pytest.fixture
-def temp_large_input_file(datadir):
-    temp_large_input_file_path = datadir.join('temp_large_input_file.txt')
+def temp_large_input_file(data_dir):
+    temp_large_input_file_path = data_dir.join('temp_large_input_file.txt')
     target_size = 1024 * 1024 * 6  # create 5MB file, multiupload limit is 5MB
-    return create_large_file(input_path, temp_large_input_file_path, target_size)
+    return create_large_file(small_input_path, temp_large_input_file_path, target_size)
+
+
+def generate_random_fastq(file_path, size_in_bytes):
+    nucleotides = np.array(['A', 'T', 'C', 'G'])
+    quality_scores = np.array(list("!\"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHI"))
+    bases_per_read = 100  # Length of each read
+
+    with open(file_path, 'w') as fastq_file:
+        total_written = 0
+
+        while total_written < size_in_bytes:
+            # Generate a random sequence of nucleotides using numpy
+            seq = ''.join(np.random.choice(nucleotides, bases_per_read))
+            qual = ''.join(np.random.choice(quality_scores, bases_per_read))
+
+            # FASTQ entry format
+            entry = f"@SEQ_ID_{np.random.randint(1, 10 ** 6)}\n{seq}\n+\n{qual}\n"
+
+            fastq_file.write(entry)
+            total_written += len(entry)
+
+            # Break if we exceed the size
+            if total_written >= size_in_bytes:
+                break
+
+        # Adjust the file to match the exact requested size
+        fastq_file.truncate(size_in_bytes)
 
 
 @pytest.fixture
-def temp_private_key_file( datadir):
-    return copy_file_to_tempdir(private_key_path, datadir)
+def temp_fastq_gz_file(data_dir):
+    file_name = "5M.fastq.gz"
+    temp_fastq_gz_path = data_dir.join(file_name)
+    target_size = 1024 * 1024 * 6  # create 5MB file, multiupload limit is 5MB
+
+    generate_random_fastq(temp_fastq_gz_path, target_size)
+
+    return temp_fastq_gz_path
 
 
 @pytest.fixture
-def temp_public_key_file(datadir):
-    return copy_file_to_tempdir(public_key_path, datadir)
+def temp_fastq_gz_file_md5sum(temp_fastq_gz_file):
+    import hashlib
 
+    with open(temp_fastq_gz_file, "rb") as f:
+        file_hash = hashlib.md5()
+        while chunk := f.read(8192):
+            file_hash.update(chunk)
 
-metadata_content = """File id,File Location
-test_file,replace_dir/mock_input_file.txt"""
+    return file_hash.hexdigest()
 
 
 @pytest.fixture
-def temp_metadata_file(datadir):
-    metadata_file = datadir.join("mock_metadata.csv")
+def temp_crypt4gh_private_key_file(data_dir):
+    return copy_file_to_tempdir(private_key_path, data_dir)
+
+
+@pytest.fixture
+def temp_crypt4gh_public_key_file(data_dir):
+    return copy_file_to_tempdir(public_key_path, data_dir)
+
+
+@pytest.fixture
+def temp_metadata_file(data_dir, temp_large_input_file):
+    with open(metadata_path, "r") as fd:
+        metadata = json.load(fd)
+
+    # insert large file
+    metadata["Donors"][0]["LabData"][0]["SequenceData"][0]["files"][0]["filepath"] = \
+        temp_large_input_file
+
+    metadata_file = data_dir.join("metadata.json")
     with open(metadata_file, 'w') as f:
-        f.write(metadata_content.replace("replace_dir", str(datadir)))
+        f.write(
+            metadata.format({"replace_dir": str(data_dir)})
+        )
     return str(metadata_file)
 
 
-config_content = """metadata_file_path: 'replace_dir/mock_metadata.csv'
-public_key_path: 'replace_dir/mock_public_key.pub'
+config_content = """
+public_key_path: '{replace_dir}/mock_public_key.pub'
 s3_url: ''
 s3_bucket: 'testing'
 s3_access_key: 'testing'
-s3_secret: 'testing'"""
+s3_secret: 'testing'
+"""
 
 
 @pytest.fixture
-def temp_config_file(datadir):
-    config_file = datadir.join("config.yaml")
+def temp_config_file(data_dir):
+    config_file = data_dir.join("config.yaml")
     with open(config_file, 'w') as f:
-        f.write(config_content.replace("replace_dir", str(datadir)))
+        f.write(config_content.replace("replace_dir", str(data_dir)))
     return str(config_file)
 
 
 @pytest.fixture
-def temp_c4gh_keys(temp_public_key_file):
-    keys = prepare_c4gh_keys(temp_public_key_file)
+def temp_c4gh_keys(temp_crypt4gh_public_key_file):
+    keys = Crypt4GH.prepare_c4gh_keys(temp_crypt4gh_public_key_file)
     return keys
 
 
 @pytest.fixture
 def temp_c4gh_header(temp_c4gh_keys):
-    header_pack = prepare_header(temp_c4gh_keys)
+    header_pack = Crypt4GH.prepare_header(temp_c4gh_keys)
     return header_pack
-
