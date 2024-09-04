@@ -10,7 +10,7 @@ readme = "README.md"
 license = { text = "MIT" }
 authors = [
     { name = "Koray Kirli", email = "koraykirli@gmail.com" },
-    { name = "Mathias Lesche", email = "mathias.lesche(at)tu-dresden.de" },
+    { name = "Mathias Lesche", email = "mathias.lesche@tu-dresden.de" },
     { name = "Florian R. Hölzlwimmer", email = "git.ich@frhoelzlwimmer.de" },
 ]
 dependencies = [
