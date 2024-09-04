@@ -4,6 +4,7 @@ import logging
 import logging.config
 
 from grz_upload.prepare_file_submission import prepare_file_submission
+from grz_upload.upload_file_submission import upload_files
 
 sys.path.append("/home/gorka/Documents/GHGA/grz-upload-client/grz_upload")  # Replace with your project path
 
@@ -36,8 +37,20 @@ def prepare_submission(config, metafile, pubkey_grz):
 
 
 @click.command()
-def upload():
-    pass
+@click.option('-c', '--config', metavar='STRING', type=str, required=True,
+                                   help='config file containing the required s3 options')
+@click.option('-f', '--sumission-file', metavar='STRING', type=str, required=False, 
+              help='metafile in json format for data upload to a GRZ s3 structure')
+@click.option('--pubkey_grz', metavar='STRING', type=str, required=True,
+                                   help='public crypt4gh key of the GRZ')
+def upload(config, sumission_file, pubkey_grz):
+
+    options = {
+        'config_file': config,
+        'meta_file': sumission_file,
+        'public_key': pubkey_grz
+    }
+    upload_files(options)
 
 if __name__ == '__main__':
     cli.add_command(prepare_submission)
