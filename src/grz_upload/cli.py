@@ -6,8 +6,6 @@ import logging.config
 from grz_upload.prepare_file_submission import prepare_file_submission
 from grz_upload.upload_file_submission import upload_files
 
-sys.path.append("/home/gorka/Documents/GHGA/grz-upload-client/grz_upload")  # Replace with your project path
-
 
 @click.group()
 @click.version_option(version='0.1', prog_name='grz_upload')
