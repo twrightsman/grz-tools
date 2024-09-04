@@ -50,8 +50,6 @@ def prepare_file_submission(options):
     except (KeyboardInterrupt, Exception) as e:
         log.error(format_exc())
     finally:
-        parser.update_json()
-        #parser.write_json()
         parser.create_submission()
         log.info('Shutting Down - Live long and prosper')
 

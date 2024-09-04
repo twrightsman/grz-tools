@@ -189,13 +189,24 @@ class Parser(object):
                         files_data['fileChecksum_encrypted'] = meta_dict[CSV_HEADER[4]]
 
     def write_json(self):
-        print(self.__json_file)
         log.info(f'Meta information written to: {self.__meta_file}')
         with open(self.__meta_file, 'w') as file:
             json.dump(self.__json_dict, file, indent=4)
 
     def create_submission(self):
+
         # Create the submission directory and subdirectories
+        path = Path.cwd() / 'submission'
+        path.mkdir(exist_ok=True)
+
+        metadata_dir = path / 'metadata'
+        files_dir = path / 'files'
+
+        metadata_dir.mkdir(exist_ok=True)
+        files_dir.mkdir(exist_ok=True)
+        metadata_file_path = metadata_dir / 'metadata.json'
+
+
         file_paths = []
         for donor in self.__json_dict.get("Donors", {}):
             for lab_data in donor.get("LabData", {}):
@@ -206,18 +217,10 @@ class Parser(object):
                         filepath = files_data['filepath']
                         fullpath = Path(filepath) / filename
                         file_paths.append(str(fullpath))
-        path = Path.cwd() / 'submission'
-        path.mkdir(exist_ok=True)
-
-        metadata_dir = path / 'metadata'
-        files_dir = path / 'files'
-
-        metadata_dir.mkdir(exist_ok=True)
-        files_dir.mkdir(exist_ok=True)
-        # Save metadata as a JSON file
-        print(self.__json_file)
-        metadata_file_path = metadata_dir / 'metadata.json'
-        shutil.copy(self.__json_file, metadata_file_path)
+                        files_data['filepath'] = str(files_dir)
+                        
+        with open(metadata_file_path, "w") as f:
+            json.dump(self.__json_dict, f, indent=4)
 
         # Save files
         for file_path in file_paths:
@@ -242,7 +245,6 @@ class Parser(object):
         log.info(f'waiting files: {self.__file_todo}')
 
     def main(self):
-
         if not self.__config_file.is_file():
             log.error('Please provide a valid path to the config file (-c/--config option)')
             exit(2)
