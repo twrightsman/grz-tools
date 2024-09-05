@@ -5,7 +5,6 @@ import logging.config
 
 from grz_upload.logging_setup import add_filelogger as add_filelogger
 from grz_upload.parser import Parser
-from grz_upload.upload_file_submission import upload_files
 
 log = logging.getLogger(__name__)
 
@@ -70,7 +69,6 @@ def upload(config, sumission_file, pubkey_grz):
         'meta_file': sumission_file,
         'public_key': pubkey_grz
     }
-    upload_files(options)
 
 if __name__ == '__main__':
     cli.add_command(prepare_submission)
