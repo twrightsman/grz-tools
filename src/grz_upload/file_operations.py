@@ -25,14 +25,16 @@ from tqdm.auto import tqdm
 
 log = logging.getLogger(__name__)
 
+
 def calculate_sha256(file_path, chunk_size=2 ** 16):
     '''
-        Calculate the sha256 value of a file in chunks
-        @param file_path: pathlib.Path()
-        @param chunk_size: int:
-        @rtype: string
-        @return: calculated sha256 value of file_path
-        '''
+    Calculate the sha256 value of a file in chunks
+
+    :param file_path: pathlib.Path()
+    :param chunk_size: int:
+    :rtype: string
+    :return: calculated sha256 value of file_path
+    '''
     total_size = getsize(file_path)
     sha256_hash = sha256()
     with open(file_path, 'rb') as f:
@@ -42,19 +44,21 @@ def calculate_sha256(file_path, chunk_size=2 ** 16):
                 pbar.update(len(chunk))
     return sha256_hash.hexdigest()
 
-def calculate_md5(file_path, chunk_size=2**16):
+
+def calculate_md5(file_path, chunk_size=2 ** 16):
     """
     Calculate the md5 value of a file in chunks
-    @param file_path: pathlib.Path()
-    @param chunk_size: int:
-    @rtype: string
-    @return: calculated md5 value of file_path
+
+    :param file_path: pathlib.Path()
+    :param chunk_size: int:
+    :rtype: string
+    :return: calculated md5 value of file_path
     """
     total_size = getsize(file_path)
     md5_hash = md5()
     with open(file_path, "rb") as f:
         with tqdm(
-            total=total_size, unit="B", unit_scale=True, desc="Calculating MD5"
+                total=total_size, unit="B", unit_scale=True, desc="Calculating MD5"
         ) as pbar:
             for chunk in iter(lambda: f.read(chunk_size), b""):
                 md5_hash.update(chunk)
@@ -119,7 +123,7 @@ class Crypt4GH(object):
             if segment_len == 0:  # No more data to read
                 break
             # Read the segment from the byte string
-            data_block = byte_string[position : position + segment_len]
+            data_block = byte_string[position: position + segment_len]
             # Update the position
             position += segment_len
             # Process the data in `segment`
