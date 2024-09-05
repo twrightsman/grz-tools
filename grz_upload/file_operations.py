@@ -1,5 +1,5 @@
 import logging
-from hashlib import md5
+from hashlib import md5, sha256
 from os import urandom
 from os.path import getsize
 
@@ -12,6 +12,22 @@ from tqdm.auto import tqdm
 
 log = logging.getLogger(__name__)
 
+def calculate_sha256(file_path, chunk_size=2 ** 16):
+    '''
+        Calculate the sha256 value of a file in chunks
+        @param file_path: pathlib.Path()
+        @param chunk_size: int:
+        @rtype: string
+        @return: calculated sha256 value of file_path
+        '''
+    total_size = getsize(file_path)
+    sha256_hash = sha256()
+    with open(file_path, 'rb') as f:
+        with tqdm(total=total_size, unit='B', unit_scale=True, desc="Calculating MD5") as pbar:
+            for chunk in iter(lambda: f.read(chunk_size), b""):
+                sha256_hash.update(chunk)
+                pbar.update(len(chunk))
+    return sha256_hash.hexdigest()
 
 def calculate_md5(file_path, chunk_size=2 ** 16):
     '''
