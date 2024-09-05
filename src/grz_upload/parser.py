@@ -38,25 +38,9 @@ class Parser(object):
         self.file_manager = FileManager()
 
     def set_options(self, options):
-        self.__config_file = self.get_absolute_path_pathlib(options["config_file"])
-        self.__json_file = self.get_absolute_path_pathlib(options["meta_file"])
-        self.__pubkey = self.get_absolute_path_pathlib(options["public_key"])
-
-    '''
-    Method changes the inputstring to an absolute path
-    @param filepath: String
-    @rtype: Path
-    @return: Path
-    '''
-
-    def get_absolute_path_pathlib(self, filepath):
-        if filepath == '~':
-            filepath = environ['HOME']
-        elif filepath[0] == '~':
-            filepath = filepath.replace(filepath[0], environ['HOME'])
-        else:
-            filepath = Path(filepath).resolve()
-        return Path(filepath)
+        self.__config_file = Path(options["config_file"]).expanduser()
+        self.__json_file = Path(options["meta_file"]).expanduser()
+        self.__pubkey = Path(options["public_key"]).expanduser()
 
     '''
     Read a yaml file and store details in a dictionary
