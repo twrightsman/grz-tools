@@ -4,10 +4,7 @@ import logging
 from pathlib import Path
 from typing import List, Tuple, Dict, Any
 
-from grz_upload.logging_setup import add_filelogger
 from grz_upload.file_operations import calculate_md5
-
-add_filelogger()
 
 log = logging.getLogger(__name__)
 
