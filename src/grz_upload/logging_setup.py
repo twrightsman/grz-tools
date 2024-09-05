@@ -1,8 +1,16 @@
+"""
+Module: logging_setup
+
+This module provides functions for setting up logging configuration.
+"""
+
 import logging
+
 from pathlib import Path
 from grz_upload.constants import _PACKAGE_ROOT, _LOGGING_FORMAT, _LOGGING_DATEFMT
 
 log = logging.getLogger(__name__)
+
 
 def add_filelogger(file_path: Path = None, level: str = "INFO") -> None:
     """
@@ -24,13 +32,18 @@ def add_filelogger(file_path: Path = None, level: str = "INFO") -> None:
         default_log_dir = Path.home() / "logs"
         default_log_dir.mkdir(parents=True, exist_ok=True)
         file_path = default_log_dir / f"{_PACKAGE_ROOT}.log"
-        log.warning(f"No log file path provided, using default: {file_path}")
+        log.warning("No log file path provided, using default: %s", file_path)
 
     try:
         fh = logging.FileHandler(file_path)
         fh.setLevel(level.upper())
         fh.setFormatter(logging.Formatter(_LOGGING_FORMAT, _LOGGING_DATEFMT))
         package_logger.addHandler(fh)
-        log.info(f"File logger added for {package_logger.name} at {file_path} with level {level.upper()}.")
+        log.info(
+            "File logger added for %s at %s with level %s.",
+            package_logger.name,
+            file_path,
+            level.upper(),
+        )
     except Exception as e:
-        log.error(f"Failed to add file logger: {e}")
+        log.error("Failed to add file logger: %s", e)

@@ -15,10 +15,17 @@ log = logging.getLogger(__name__)
 
 
 class S3UploadWorker(object):
-    CSV_HEADER = ['file_id', 'file_location', 'original_md5', 'filename_encrypted', 'encrypted_md5', 'upload_status']
+    CSV_HEADER = [
+        "file_id",
+        "file_location",
+        "original_md5",
+        "filename_encrypted",
+        "encrypted_md5",
+        "upload_status",
+    ]
     MULTIPART_CHUNK_SIZE = 50 * 1024 * 1024  # 50 MB
     MAX_SINGLEPART_UPLOAD_SIZE = 5 * 1024 * 1024  # 5 MB
-    EXT = '.c4gh'
+    EXT = ".c4gh"
 
     def __init__(self, s3_dict: Dict[str, str], pubkey_grz_file, status_file_path=None):
         """
@@ -40,31 +47,38 @@ class S3UploadWorker(object):
 
         # Initialize S3 client for uploading
         self.__s3_client: boto3.session.Session.client = boto3_client(
-            's3',
-            endpoint_url=self.__s3_dict['s3_url'] if self.__s3_dict['s3_url'] != "" else None,
-            aws_access_key_id=self.__s3_dict['s3_access_key'],
-            aws_secret_access_key=self.__s3_dict['s3_secret']
+            "s3",
+            endpoint_url=(
+                self.__s3_dict["s3_url"] if self.__s3_dict["s3_url"] != "" else None
+            ),
+            aws_access_key_id=self.__s3_dict["s3_access_key"],
+            aws_secret_access_key=self.__s3_dict["s3_secret"],
         )
-    
+
     def get_encryption_key(self):
         # Return the generated encryption key
         return self._keys
+
     def save_upload_state(self):
-        '''
-       Save the upload state as a csv file to the filesystem
-       '''
-        log.info(f'Upload status information written to: {self._status_file_path}')
-        with open(self._status_file_path, 'w', newline='') as temp_csvfile:
-            writer = DictWriter(temp_csvfile, fieldnames=S3UploadWorker.CSV_HEADER, delimiter=',')
+        """
+        Save the upload state as a csv file to the filesystem
+        """
+        log.info(f"Upload status information written to: {self._status_file_path}")
+        with open(self._status_file_path, "w", newline="") as temp_csvfile:
+            writer = DictWriter(
+                temp_csvfile, fieldnames=S3UploadWorker.CSV_HEADER, delimiter=","
+            )
             writer.writeheader()
             for file_dict in self._status_file_path.values():
                 writer.writerow(file_dict)
 
     def show_information(self):
-        log.info(f'total files in metafile: {self.__file_total}')
-        log.info(f'uploaded files: {self.__file_done}')
-        log.info(f'failed files: {self.__file_failed}')
-        log.info(f'already finished files before current upload: {self.__file_prefinished}')
+        log.info(f"total files in metafile: {self.__file_total}")
+        log.info(f"uploaded files: {self.__file_done}")
+        log.info(f"failed files: {self.__file_failed}")
+        log.info(
+            f"already finished files before current upload: {self.__file_prefinished}"
+        )
 
     def _encrypt_and_multipart_upload(self, local_file, s3_object_id):
         """
@@ -75,17 +89,18 @@ class S3UploadWorker(object):
         :return: tuple with md5 values for original file, encrypted file
         """
         multipart_upload = self.__s3_client.create_multipart_upload(
-            Bucket=self.__s3_dict['s3_bucket'],
-            Key=s3_object_id
+            Bucket=self.__s3_dict["s3_bucket"], Key=s3_object_id
         )
-        upload_id = multipart_upload['UploadId']
+        upload_id = multipart_upload["UploadId"]
         parts = []
         part_number = 1
 
         # Get the file size for progress bar
         file_size = getsize(local_file)
         # initialize progress bar
-        progress_bar = tqdm(total=file_size, unit='B', unit_scale=True, unit_divisor=1024)
+        progress_bar = tqdm(
+            total=file_size, unit="B", unit_scale=True, unit_divisor=1024
+        )
 
         try:
             # Initialize MD5 calculations
@@ -95,7 +110,7 @@ class S3UploadWorker(object):
             # prepare header
             header_info = Crypt4GH.prepare_header(self._keys)
 
-            with open(local_file, 'rb') as infile:
+            with open(local_file, "rb") as infile:
                 # we will prepend the header to the first chunk
                 first_chunk_read = False
 
@@ -114,36 +129,32 @@ class S3UploadWorker(object):
 
                     # Upload each encrypted chunk
                     part = self.__s3_client.upload_part(
-                        Bucket=self.__s3_dict['s3_bucket'],
+                        Bucket=self.__s3_dict["s3_bucket"],
                         Key=s3_object_id,
                         PartNumber=part_number,
                         UploadId=upload_id,
-                        Body=encrypted_chunk
+                        Body=encrypted_chunk,
                     )
                     progress_bar.update(len(chunk))
 
-                    parts.append({
-                        'PartNumber': part_number,
-                        'ETag': part['ETag']
-                    })
+                    parts.append({"PartNumber": part_number, "ETag": part["ETag"]})
                     part_number += 1
 
             # Complete the multipart upload
             self.__s3_client.complete_multipart_upload(
-                Bucket=self.__s3_dict['s3_bucket'],
+                Bucket=self.__s3_dict["s3_bucket"],
                 Key=s3_object_id,
                 UploadId=upload_id,
-                MultipartUpload={'Parts': parts}
+                MultipartUpload={"Parts": parts},
             )
             progress_bar.close()  # close progress bar
             return original_md5.hexdigest(), encrypted_md5.hexdigest()
 
         except Exception as e:
-            for i in format_exc().split('\n'): log.error(i)
+            for i in format_exc().split("\n"):
+                log.error(i)
             self.__s3_client.abort_multipart_upload(
-                Bucket=self.__s3_dict['s3_bucket'],
-                Key=s3_object_id,
-                UploadId=upload_id
+                Bucket=self.__s3_dict["s3_bucket"], Key=s3_object_id, UploadId=upload_id
             )
             raise e
 
@@ -161,7 +172,7 @@ class S3UploadWorker(object):
             header_info = Crypt4GH.prepare_header(self._keys)
 
             # read the whole file into memory
-            with open(local_file, 'rb') as fd:
+            with open(local_file, "rb") as fd:
                 data = fd.read()
 
             encrypted_data = Crypt4GH.encrypt_part(data, header_info[1])
@@ -174,9 +185,9 @@ class S3UploadWorker(object):
 
             # Upload data
             self.__s3_client.put_object(
-                Bucket=self.__s3_dict['s3_bucket'],
+                Bucket=self.__s3_dict["s3_bucket"],
                 Key=s3_object_id,
-                Body=encrypted_data
+                Body=encrypted_data,
             )
 
             return original_md5.hexdigest(), encrypted_md5.hexdigest()
@@ -193,57 +204,54 @@ class S3UploadWorker(object):
         :return: md5 value for uploaded file
         """
         multipart_upload = self.__s3_client.create_multipart_upload(
-            Bucket=self.__s3_dict['s3_bucket'],
-            Key=s3_object_id
+            Bucket=self.__s3_dict["s3_bucket"], Key=s3_object_id
         )
-        upload_id = multipart_upload['UploadId']
+        upload_id = multipart_upload["UploadId"]
         parts = []
         part_number = 1
 
         # Get the file size for progress bar
         file_size = getsize(local_file)
         # initialize progress bar
-        progress_bar = tqdm(total=file_size, unit='B', unit_scale=True, unit_divisor=1024)
+        progress_bar = tqdm(
+            total=file_size, unit="B", unit_scale=True, unit_divisor=1024
+        )
 
         try:
             # Initialize MD5 calculations
             original_md5 = md5()
 
-            with open(local_file, 'rb') as infile:
+            with open(local_file, "rb") as infile:
                 # Process the file in chunks
                 while chunk := infile.read(S3UploadWorker.MULTIPART_CHUNK_SIZE):
                     original_md5.update(chunk)
                     # Upload each chunk
                     part = self.__s3_client.upload_part(
-                        Bucket=self.__s3_dict['s3_bucket'],
+                        Bucket=self.__s3_dict["s3_bucket"],
                         Key=s3_object_id,
                         PartNumber=part_number,
                         UploadId=upload_id,
-                        Body=chunk
+                        Body=chunk,
                     )
                     progress_bar.update(len(chunk))
-                    parts.append({
-                        'PartNumber': part_number,
-                        'ETag': part['ETag']
-                    })
+                    parts.append({"PartNumber": part_number, "ETag": part["ETag"]})
                     part_number += 1
 
             # Complete the multipart upload
             self.__s3_client.complete_multipart_upload(
-                Bucket=self.__s3_dict['s3_bucket'],
+                Bucket=self.__s3_dict["s3_bucket"],
                 Key=s3_object_id,
                 UploadId=upload_id,
-                MultipartUpload={'Parts': parts}
+                MultipartUpload={"Parts": parts},
             )
             progress_bar.close()  # close progress bar
             return original_md5.hexdigest()
 
         except Exception as e:
-            for i in format_exc().split('\n'): log.error(i)
+            for i in format_exc().split("\n"):
+                log.error(i)
             self.__s3_client.abort_multipart_upload(
-                Bucket=self.__s3_dict['s3_bucket'],
-                Key=s3_object_id,
-                UploadId=upload_id
+                Bucket=self.__s3_dict["s3_bucket"], Key=s3_object_id, UploadId=upload_id
             )
             raise e
 
@@ -257,7 +265,7 @@ class S3UploadWorker(object):
         """
         try:
             # read the whole file into memory
-            with open(local_file, 'rb') as fd:
+            with open(local_file, "rb") as fd:
                 data = fd.read()
 
             # calculate md5sum
@@ -265,9 +273,7 @@ class S3UploadWorker(object):
 
             # Upload data
             self.__s3_client.put_object(
-                Bucket=self.__s3_dict['s3_bucket'],
-                Key=s3_object_id,
-                Body=data
+                Bucket=self.__s3_dict["s3_bucket"], Key=s3_object_id, Body=data
             )
 
             return original_md5.hexdigest()
@@ -278,13 +284,15 @@ class S3UploadWorker(object):
     def encrypt_upload_files(self, files: Dict[str, str]):
         retval = dict()
         for s3_object_id, local_file_path in files.items():
-            log.info(f'{s3_object_id} - {local_file_path} - Processing')
+            log.info(f"{s3_object_id} - {local_file_path} - Processing")
 
             # Get the file size to decide whether to use multipart upload
             file_size = getsize(local_file_path)
             if file_size > S3UploadWorker.MAX_SINGLEPART_UPLOAD_SIZE:
                 # do multipart upload
-                md5sums = self._encrypt_and_multipart_upload(local_file_path, s3_object_id)
+                md5sums = self._encrypt_and_multipart_upload(
+                    local_file_path, s3_object_id
+                )
             else:
                 md5sums = self._encrypt_and_upload(local_file_path, s3_object_id)
 
@@ -294,7 +302,7 @@ class S3UploadWorker(object):
     def upload_files(self, files: Dict[str, str]):
         retval = dict()
         for s3_object_id, local_file_path in files.items():
-            log.info(f'{s3_object_id} - {local_file_path} - Processing')
+            log.info(f"{s3_object_id} - {local_file_path} - Processing")
 
             # Get the file size to decide whether to use multipart upload
             file_size = getsize(local_file_path)
