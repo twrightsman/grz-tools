@@ -231,7 +231,41 @@ class Parser(object):
         except Exception as e:
             log.error("Failed to prepare directory: %s", e)
             return "Directory preparation failed"
+        
+        if encrypt:
+            # Step 5: Prepare S3 worker and get encryption key
+            s3_worker = S3UploadWorker(self.__s3_dict, self.__pubkey)
+            try:
+                public_keys = s3_worker.get_encryption_key()
+                log.info("Public keys retrieved successfully.")
+            except Exception as e:
+                log.error("Failed to prepare public keys: %s", e)
+                return "Public key retrieval failed"
 
+        # Step 6: Encrypt files
+        try:
+            CSV_HEADER = ['file_id', 'file_location', 'original_md5', 'filename_encrypted', 'encrypted_md5', 'upload_status']
+
+            for donor in self.__json_dict.get("Donors", {}):
+                for lab_data in donor.get("LabData", {}):
+                    for sequence_data in lab_data.get("SequenceData", {}):
+                        for files_data in sequence_data.get("files", {}):
+                            filename = files_data['filename']
+                            filepath = files_data['filepath']
+                            fullpath = Path(filepath) / filename
+                            meta_dict = self.get_metainfo_file(filename)
+                            files_data[CSV_HEADER[3]] = meta_dict[CSV_HEADER[3]]
+                            files_data[CSV_HEADER[5]] = meta_dict[CSV_HEADER[5]]
+                            output_file_path = Path(filename).with_suffix('.c4gh')
+                            original_md5, encrypted_md5 = Crypt4GH.encrypt_file(fullpath, output_file_path, public_keys)
+                            files_data['fileChecksum_encrypted'] = encrypted_md5               
+                            log.info("Encryption successful for file: %s", filename)
+                            log.info("Original MD5: %s", original_md5)
+                            log.info("Encrypted MD5: %s", encrypted_md5)
+        except Exception as e:
+            log.error("Encryption failed for one or more files: %s", e)
+            return "Encryption failed"
+                
         # Step 2: Update file directory
         try:
             file_paths = self.file_manager.update_file_directory(self.__json_dict, files_dir)
@@ -257,33 +291,6 @@ class Parser(object):
         except Exception as e:
             log.error("Failed to move files: %s", e)
             return "File move failed"
-
-        if encrypt:
-            # Step 5: Prepare S3 worker and get encryption key
-            s3_worker = S3UploadWorker(self.__s3_dict, self.__pubkey)
-            try:
-                public_keys = s3_worker.get_encryption_key()
-                log.info("Public keys retrieved successfully.")
-            except Exception as e:
-                log.error("Failed to prepare public keys: %s", e)
-                return "Public key retrieval failed"
-
-            # Step 6: Encrypt files
-            try:
-                encrypted_md5s = []
-                for file in new_file_paths:
-                    output_file_path = Path(file).with_suffix('.c4gh')
-                    original_md5, encrypted_md5 = Crypt4GH.encrypt_file(file, output_file_path, public_keys)
-                    file_name = Path(file).name
-                    encrypted_md5s.append(encrypted_md5)
-                    log.info("Encryption successful for file: %s", file_name)
-                    log.info("Original MD5: %s", original_md5)
-                    log.info("Encrypted MD5: %s", encrypted_md5)
-            except Exception as e:
-                log.error("Encryption failed for one or more files: %s", e)
-                return "Encryption failed"
-        
-        self.update_json(metadata_file, encrypted_md5s)
 
         log.info("Submission preparation completed successfully.")
         return "Submission preparation successful"
