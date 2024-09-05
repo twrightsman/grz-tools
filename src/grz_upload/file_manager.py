@@ -17,7 +17,7 @@ class FileManager:
         """Initialize FileManager."""
         self._file_invalid = 0  # Initialize file invalid count
 
-    def move_metadata(self, json_file: Dict[str, Any], metadata_file_path: Path) -> None:
+    def copy_metadata(self, json_file: Dict[str, Any], metadata_file_path: Path) -> None:
         """
         Move metadata to the specified file path.
 
@@ -34,7 +34,7 @@ class FileManager:
             log.error(f'Error moving metadata: {e}')
             raise
 
-    def move_files(self, file_paths: List[str], files_dir: Path) -> List[Path]:
+    def copy_files(self, file_paths: List[str], files_dir: Path) -> List[Path]:
         """
         Move files to the specified directory.
 
@@ -50,7 +50,7 @@ class FileManager:
                 file_name = Path(file_path).name
                 new_file_path = files_dir / file_name
                 log.info(f"Moving file from {file_path} to {new_file_path}")
-                shutil.move(file_path, new_file_path)
+                shutil.copy(file_path, new_file_path)
                 new_file_paths.append(new_file_path)
             return new_file_paths
 
@@ -102,11 +102,8 @@ class FileManager:
                 for lab_data in donor.get("LabData", []):
                     for sequence_data in lab_data.get("SequenceData", []):
                         for files_data in sequence_data.get("files", []):
-                            filename = files_data['filename']
-                            filepath = files_data['filepath']
-                            fullpath = Path(filepath) / filename
-                            file_paths.append(str(fullpath))
                             files_data['filepath'] = str(files_dir)
+                            file_paths.append(files_dir / files_data['filename'])
             log.info(f"Updated file paths in JSON: {file_paths}")
             return file_paths
         except Exception as e:
