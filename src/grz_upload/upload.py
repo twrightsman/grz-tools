@@ -45,7 +45,10 @@ class S3UploadWorker(object):
             aws_access_key_id=self.__s3_dict['s3_access_key'],
             aws_secret_access_key=self.__s3_dict['s3_secret']
         )
-
+    
+    def get_encryption_key(self):
+        # Return the generated encryption key
+        return self._keys
     def save_upload_state(self):
         '''
        Save the upload state as a csv file to the filesystem

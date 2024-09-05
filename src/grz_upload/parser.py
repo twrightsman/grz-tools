@@ -5,16 +5,14 @@ import logging.config
 from argparse import ArgumentParser as ArgumentParser
 from argparse import RawDescriptionHelpFormatter
 from base64 import b64decode
-from datetime import datetime
 from os import environ
 from pathlib import Path
-from subprocess import check_call
-from time import sleep
 from traceback import format_exc
 
 from yaml import safe_load, YAMLError
 
-from grz_upload.constants import _PACKAGE_ROOT, _LOGGING_CONFIG, _LOGGING_FORMAT, _LOGGING_DATEFMT
+from grz_upload.file_manager import FileManager
+from grz_upload.file_operations import Crypt4GH
 from grz_upload.file_operations import calculate_md5
 from grz_upload.upload import S3UploadWorker
 
@@ -37,6 +35,7 @@ class Parser(object):
         self.__file_failed = 0
         self.__file_total = 0
         self.__file_invalid = 0
+        self.file_manager = FileManager()
 
     def set_options(self, options):
         self.__config_file = self.get_absolute_path_pathlib(options["config_file"])
@@ -176,60 +175,31 @@ class Parser(object):
     def get_metainfo_file(self, filename):
         return self.__meta_dict[filename]
 
-    def update_json(self):
+    def update_json(self, json_file_path, encrypted_md5):
         CSV_HEADER = ['file_id', 'file_location', 'original_md5', 'filename_encrypted', 'encrypted_md5', 'upload_status']
+        count = 0
         for donor in self.__json_dict.get("Donors", {}):
             for lab_data in donor.get("LabData", {}):
                 for sequence_data in lab_data.get("SequenceData", {}):
                     for files_data in sequence_data.get("files", {}):
                         filename = files_data['filename']
-                        meta_dict = self.get_metainfo_file(filename)
+                        meta_dict = self.get_metainfo_file(filename)                        
                         files_data[CSV_HEADER[3]] = meta_dict[CSV_HEADER[3]]
                         files_data[CSV_HEADER[5]] = meta_dict[CSV_HEADER[5]]
-                        files_data['fileChecksum_encrypted'] = meta_dict[CSV_HEADER[4]]
+                        files_data['fileChecksum_encrypted'] = encrypted_md5[count]
+                        count += 1
+
+        try:
+            with open(json_file_path, 'w') as json_file:
+                json.dump(self.__json_dict, json_file, indent=4)
+            log.info("JSON file updated successfully: %s", json_file_path)
+        except Exception as e:
+            log.error("Failed to update JSON file: %s", e)
 
     def write_json(self):
         log.info(f'Meta information written to: {self.__meta_file}')
         with open(self.__meta_file, 'w') as file:
             json.dump(self.__json_dict, file, indent=4)
-
-    def create_submission(self):
-
-        # Create the submission directory and subdirectories
-        path = Path.cwd() / 'submission'
-        path.mkdir(exist_ok=True)
-
-        metadata_dir = path / 'metadata'
-        files_dir = path / 'files'
-
-        metadata_dir.mkdir(exist_ok=True)
-        files_dir.mkdir(exist_ok=True)
-        metadata_file_path = metadata_dir / 'metadata.json'
-
-
-        file_paths = []
-        for donor in self.__json_dict.get("Donors", {}):
-            for lab_data in donor.get("LabData", {}):
-                for sequence_data in lab_data.get("SequenceData", {}):
-                    for files_data in sequence_data.get("files", {}):
-                        self.__file_total += 1
-                        filename = files_data['filename']
-                        filepath = files_data['filepath']
-                        fullpath = Path(filepath) / filename
-                        file_paths.append(str(fullpath))
-                        files_data['filepath'] = str(files_dir)
-                        
-        with open(metadata_file_path, "w") as f:
-            json.dump(self.__json_dict, f, indent=4)
-
-        # Save files
-        for file_path in file_paths:
-            file_name = Path(file_path).name
-            new_file_path = files_dir / file_name
-        
-            shutil.move(file_path, new_file_path)
-
-        log.info("Submission directory created successfully!")
 
 
     def show_information(self, logfile):
@@ -244,6 +214,83 @@ class Parser(object):
         log.info(f'invalid files: {self.__file_invalid}')
         log.info(f'waiting files: {self.__file_todo}')
 
+    def prepare_submission(self, encrypt=True):
+        """ 
+        Prepare the submission for upload to GRZ S3.
+        
+        :param encrypt: Boolean flag to encrypt files before upload.
+        :return: String indicating the status of the submission preparation.
+        """
+
+        log.info("Preparing submission...")
+
+        # Step 1: Prepare directory and metadata file
+        try:
+            files_dir, metadata_file = self.file_manager.prepare_directory()
+            log.info("Files directory prepared at: %s", files_dir)
+        except Exception as e:
+            log.error("Failed to prepare directory: %s", e)
+            return "Directory preparation failed"
+
+        # Step 2: Update file directory
+        try:
+            file_paths = self.file_manager.update_file_directory(self.__json_dict, files_dir)
+            log.info("File paths updated")
+        except Exception as e:
+            log.error("Failed to update file directory: %s", e)
+            return "File directory update failed"
+
+        # Step 3: Move metadata
+        try:
+            self.file_manager.move_metadata(self.__json_dict, metadata_file)
+            log.info("Metadata moved to: %s", metadata_file)
+        except Exception as e:
+            log.error("Failed to move metadata: %s", e)
+            return "Metadata move failed"
+
+        # Step 4: Move files
+        try:
+            new_file_paths = self.file_manager.move_files(file_paths, files_dir)
+
+            file_names = [Path(file).name for file in new_file_paths]
+            log.info("Files moved: %s", file_names)
+        except Exception as e:
+            log.error("Failed to move files: %s", e)
+            return "File move failed"
+
+        if encrypt:
+            # Step 5: Prepare S3 worker and get encryption key
+            s3_worker = S3UploadWorker(self.__s3_dict, self.__pubkey)
+            try:
+                public_keys = s3_worker.get_encryption_key()
+                log.info("Public keys retrieved successfully.")
+            except Exception as e:
+                log.error("Failed to prepare public keys: %s", e)
+                return "Public key retrieval failed"
+
+            # Step 6: Encrypt files
+            try:
+                encrypted_md5s = []
+                for file in new_file_paths:
+                    output_file_path = Path(file).with_suffix('.c4gh')
+                    original_md5, encrypted_md5 = Crypt4GH.encrypt_file(file, output_file_path, public_keys)
+                    file_name = Path(file).name
+                    encrypted_md5s.append(encrypted_md5)
+                    log.info("Encryption successful for file: %s", file_name)
+                    log.info("Original MD5: %s", original_md5)
+                    log.info("Encrypted MD5: %s", encrypted_md5)
+            except Exception as e:
+                log.error("Encryption failed for one or more files: %s", e)
+                return "Encryption failed"
+        
+        self.update_json(metadata_file, encrypted_md5s)
+
+        log.info("Submission preparation completed successfully.")
+        return "Submission preparation successful"
+
+
+
+        
     def main(self):
         if not self.__config_file.is_file():
             log.error('Please provide a valid path to the config file (-c/--config option)')

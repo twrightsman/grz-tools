@@ -1,20 +1,27 @@
-import sys
+from traceback import format_exc
 import click
 import logging
 import logging.config
 
-from grz_upload.prepare_file_submission import prepare_file_submission
+from grz_upload.logging_setup import add_filelogger as add_filelogger
+from grz_upload.parser import Parser
 from grz_upload.upload_file_submission import upload_files
 
+log = logging.getLogger(__name__)
 
 @click.group()
 @click.version_option(version='0.1', prog_name='grz_upload')
-@click.option('--verbose', '-v', is_flag=True, help='Enable verbose logging')
-def cli(verbose):
-    if verbose:
-        logging.basicConfig(level=logging.DEBUG)
+@click.option('--log-file', metavar='FILE', type=str, help='Path to log file')
+@click.option('--log-level', default='INFO', type=click.Choice(['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL']),
+              help='Set the log level (default: INFO)')
+def cli(log_file, log_level):
+
+    if log_file:
+        add_filelogger(log_file, log_level)  # Add file logger
     else:
-        logging.basicConfig(level=logging.INFO)
+        logging.basicConfig(level=log_level.upper(), format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+
+    logging.getLogger(__name__).info("Logging setup complete.")
 
 @click.command()
 @click.option('-c', '--config', metavar='STRING', type=str, required=True,
@@ -31,8 +38,23 @@ def prepare_submission(config, metafile, pubkey_grz):
         'public_key': pubkey_grz
     }
 
-    prepare_file_submission(options)
+    log.info('preparing submission...')
 
+    try:
+
+        parser = Parser()
+        parser.set_options(options)
+        parser.main()
+
+        parser.prepare_submission()
+        
+    except (KeyboardInterrupt, Exception) as e:
+        log.error(format_exc())
+    
+    finally:
+        log.info('Shutting Down - Live long and prosper')
+
+        logging.shutdown()
 
 @click.command()
 @click.option('-c', '--config', metavar='STRING', type=str, required=True,

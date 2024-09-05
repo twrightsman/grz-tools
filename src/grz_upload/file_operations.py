@@ -93,7 +93,38 @@ class Crypt4GH(object):
 
     @staticmethod
     def encrypt_file(input_path, output_path, public_keys):
-        raise NotImplementedError()
+        """
+        Encrypt the file, properly handling the Crypt4GH header.
+
+        :param file_location: pathlib.Path()
+        :param s3_object_id: string
+        :param keys: tuple[Key]
+        :return: tuple with md5 values for original file, encrypted file
+        """
+        try:
+            # prepare header
+            header_info = Crypt4GH.prepare_header(public_keys)
+
+            # read the whole file into memory
+            with open(input_path, 'rb') as fd:
+                data = fd.read()
+
+            encrypted_data = Crypt4GH.encrypt_part(data, header_info[1])
+            # add header
+            encrypted_data = header_info[0] + encrypted_data
+
+            # Calculate MD5 sums
+            original_md5 = md5(data)
+            encrypted_md5 = md5(encrypted_data)
+
+            # Write encrypted data to the output file
+            with open(output_path, 'wb') as output_file:
+                output_file.write(encrypted_data)
+                
+            return original_md5.hexdigest(), encrypted_md5.hexdigest()
+
+        except Exception as e:
+            raise e
 
     @staticmethod
     def decrypt_file(input_path, output_path, private_key):
