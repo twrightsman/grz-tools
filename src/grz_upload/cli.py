@@ -146,6 +146,8 @@ def upload(config, sumission_file, pubkey_grz):
         "public_key": pubkey_grz,
     }
 
+    # TODO: Implement the upload logic
+
 
 if __name__ == "__main__":
     cli.add_command(prepare_submission)
