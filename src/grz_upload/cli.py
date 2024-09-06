@@ -46,23 +46,51 @@ def cli(log_file=None, log_level="INFO"):
 
     logging.getLogger(__name__).info("Logging setup complete.")
 
-
 @click.command()
 @click.option(
-    "-c",
-    "--config",
+    "-f",
+    "--folderpath",
     metavar="STRING",
     type=str,
     required=True,
-    help="config file containing the required s3 options",
+    help="filepath to the directory containing the data to be uploaded",
 )
+def checksum_validation(folderpath):
+    """
+    Validates the checksum of the files in the provided directory.
+    Args:
+        folderpath (str): The path to the directory containing the data files.
+    Raises:
+        Exception: If an error occurs during the checksum validation.
+        Returns:
+        None
+    """
+    options = {"folderpath": folderpath}
+
+    log.info("starting checksum validation...")
+    try:
+
+        parser = Parser(folderpath)
+        parser.set_options(options, pubkey=False)
+        parser.checksum_validation()
+        parser.show_information(logging)
+
+    except (KeyboardInterrupt, Exception) as e:
+        log.error(format_exc())
+
+    finally:
+        log.info("Shutting Down - Live long and prosper")
+        logging.shutdown()
+
+
+@click.command()
 @click.option(
     "-f",
-    "--metafile",
+    "--folderpath",
     metavar="STRING",
     type=str,
-    required=False,
-    help="metafile in json format for data upload to a GRZ s3 structure",
+    required=True,
+    help="filepath to the directory containing the data to be uploaded",
 )
 @click.option(
     "--pubkey_grz",
@@ -71,12 +99,11 @@ def cli(log_file=None, log_level="INFO"):
     required=True,
     help="public crypt4gh key of the GRZ",
 )
-def prepare_submission(config, metafile, pubkey_grz):
+def encrypt(folderpath, pubkey_grz):
     """
-    Prepares a submission using the provided configuration, metafile, and public key.
+    Prepares a submission using the provided filepath, metafile, and public key.
     Args:
-        config (str): The path to the configuration file.
-        metafile (str): The path to the metafile.
+        folderpath (str): The path to the data files.
         pubkey_grz (str): The public key for the submission.
     Raises:
         Exception: If an error occurs during the preparation of the submission.
@@ -84,17 +111,16 @@ def prepare_submission(config, metafile, pubkey_grz):
         None
     """
 
-    options = {"config_file": config, "meta_file": metafile, "public_key": pubkey_grz}
+    options = {"folderpath": folderpath, "public_key": pubkey_grz}
 
-    log.info("preparing submission...")
+    log.info("Starting encryption...")
 
     try:
 
-        parser = Parser()
+        parser = Parser(folderpath)
         parser.set_options(options)
-        parser.main()
 
-        parser.prepare_submission()
+        parser.encrypt()
 
     except (KeyboardInterrupt, Exception) as e:
         log.error(format_exc())
@@ -116,7 +142,7 @@ def prepare_submission(config, metafile, pubkey_grz):
 )
 @click.option(
     "-f",
-    "--sumission-file",
+    "--folderpath",
     metavar="STRING",
     type=str,
     required=False,
@@ -150,6 +176,7 @@ def upload(config, sumission_file, pubkey_grz):
 
 
 if __name__ == "__main__":
-    cli.add_command(prepare_submission)
+    cli.add_command(checksum_validation)
+    cli.add_command(encrypt)
     cli.add_command(upload)
     cli()
