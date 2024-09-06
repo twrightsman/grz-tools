@@ -152,15 +152,10 @@ class Crypt4GH(object):
             # add header
             encrypted_data = header_info[0] + encrypted_data
 
-            # Calculate MD5 sums
-            original_md5 = md5(data)
-            encrypted_md5 = md5(encrypted_data)
-
+            # Calculate SHA256 sums
             # Write encrypted data to the output file
             with open(output_path, "wb") as output_file:
                 output_file.write(encrypted_data)
-
-            return original_md5.hexdigest(), encrypted_md5.hexdigest()
 
         except Exception as e:
             raise e

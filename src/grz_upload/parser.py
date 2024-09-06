@@ -11,23 +11,23 @@ from traceback import format_exc
 
 from yaml import safe_load, YAMLError
 
-from grz_upload.file_manager import FileManager
 from grz_upload.file_operations import Crypt4GH
-from grz_upload.file_operations import calculate_md5
+from grz_upload.file_operations import calculate_md5, calculate_sha256
+from grz_upload.file_validator import FileValidator
 from grz_upload.upload import S3UploadWorker
 
 log = logging.getLogger(__name__)
 
 
 class Parser(object):
-    def __init__(self):
+    def __init__(self, folderpath, s3_config=None):
         self.__parser = ArgumentParser(
             description="""
         Manages the encryption and upload of files into the s3 structure of a GRZ.
         """,
             formatter_class=RawDescriptionHelpFormatter,
         )
-        self.__config_file = ""
+        self.__folderpath = ""
         self.__s3_dict = {}
         self.__meta_file = None
         self.__json_file = None
@@ -39,12 +39,29 @@ class Parser(object):
         self.__file_failed = 0
         self.__file_total = 0
         self.__file_invalid = 0
-        self.file_manager = FileManager()
+        self.file_validator = FileValidator(folderpath)
+        
+        if s3_config:
+            self.__config_file = s3_config
+        else:
+            self.__config_file = None
 
-    def set_options(self, options):
-        self.__config_file = Path(options["config_file"]).expanduser()
-        self.__json_file = Path(options["meta_file"]).expanduser()
-        self.__pubkey = Path(options["public_key"]).expanduser()
+
+    def set_options(self, options, pubkey=True):
+        self.__folderpath = Path(options["folderpath"]).expanduser()
+        self.check_metadata_file()
+        if pubkey:
+            self.__pubkey = Path(options["public_key"]).expanduser()
+
+    def check_metadata_file(self):
+        metadata_file = self.__folderpath / "metadata" / "metadata.json"
+        if not metadata_file.is_file():
+            log.error(
+                f"Please provide a valid path to the metadata file: {metadata_file}"
+            )
+            exit(2)
+        self.__json_file = metadata_file
+        
 
     """
     Read a yaml file and store details in a dictionary
@@ -69,7 +86,7 @@ class Parser(object):
         failed = False
         for i in temp:
             if i not in self.__s3_dict:
-                log.error(f"Please provide {i} in {self.__config_file}")
+                #log.error(f"Please provide {i} in {self.__config_file}")
                 failed = True
         if "use_https" in self.__s3_dict:
             if self.__s3_dict["use_https"] and not self.__s3_dict["s3_url"].startswith(
@@ -77,43 +94,18 @@ class Parser(object):
             ):
                 self.__s3_dict["s3_url"] = f'https://{self.__s3_dict["s3_url"]}'
         return failed
-
-    def check_public_key(self):
-        with open(self.__pubkey, "rb") as f:
-            f.readline()
-            key_data = f.readline().strip()
-            f.readline()
+    
+    def load_json(self):
         try:
-            key_data = b64decode(key_data)
-        except Exception as e:
+            with open(str(self.__json_file), "r", encoding="utf-8") as jsonfile:
+                self.__json_dict = json.load(jsonfile)
+        except json.JSONDecodeError:
             log.error(
-                "Public crypt4gh key file of GRZ is not a valid file (--pubkey_grz option)"
+                f"The provided file at {self.__json_file} is not a valid JSON (option --metafile)."
             )
-            log.error(f"Key decoding error: {e}")
-            exit(2)
-        # Check if the key is 32 bytes long (Curve25519 public key size)
-        if len(key_data) != 32:
-            log.error(
-                "Public crypt4gh key file of GRZ is not a valid file (--pubkey_grz option)"
-            )
-            log.error("Client public key must be a 32 bytes long bytes sequence")
-            exit(2)
+            exit()
 
-    def build_dict(self, filename, fullpath, checksum, checksum_enc, upload_status):
-        temp = {}
-        temp["file_id"] = filename
-        temp["file_location"] = fullpath
-        temp["original_md5"] = checksum
-        temp["encrypted_md5"] = checksum_enc
-        temp["upload_status"] = upload_status
-        temp["filename_encrypted"] = (
-            filename
-            if filename.endswith(S3UploadWorker.EXT)
-            else filename + S3UploadWorker.EXT
-        )
-        return temp
-
-    def check_json(self):
+    def checksum_validation(self):
         """
         Check the validity of a JSON file and process its contents.
 
@@ -125,70 +117,26 @@ class Parser(object):
         Returns:
             None
         """
-        try:
-            with open(str(self.__json_file), "r", encoding="utf-8") as jsonfile:
-                self.__json_dict = json.load(jsonfile)
-        except json.JSONDecodeError:
-            log.error(
-                f"The provided file at {self.__json_file} is not a valid JSON (option --metafile)."
-            )
-            exit()
-        filepaths = []
+        self.load_json()
         stop = False
         for donor in self.__json_dict.get("Donors", {}):
             for lab_data in donor.get("LabData", {}):
                 for sequence_data in lab_data.get("SequenceData", {}):
                     for files_data in sequence_data.get("files", {}):
-                        files_invalid = self.__file_invalid
                         self.__file_total += 1
-                        filename = files_data["filename"]
-                        filepath = files_data["filepath"]
+                        filename = files_data["filepath"]
+                        log.info(f"Checksum validation: {filename}")
                         filechecksum = files_data["fileChecksum"]
-                        filechecksum_enc = files_data.get("fileChecksum_encrypted", "")
-                        upload_status = files_data.get("upload_status", "in progress")
-                        if upload_status == "failed":
-                            self.__file_failed += 1
-                        fullpath = Path(filepath) / filename
-                        if upload_status == "finished":
-                            log.warning(
-                                f"File ID {filename} already scanned in metafile - Skipping"
-                            )
-                            self.__file_done += 1
-                            self.__meta_dict[filename] = self.build_dict(
-                                filename,
-                                fullpath,
-                                filechecksum,
-                                filechecksum_enc,
-                                upload_status,
-                            )
-                            continue
-                        log.info(f"Preprocessing: {fullpath}")
-                        if not fullpath.is_file():
-                            log.error(
-                                f"The provided file {filename} in {self.__json_file} does not exist."
-                            )
+
+                        is_valid = self.file_validator.validate_file(filename, filechecksum)
+                        
+                        if not is_valid:
                             self.__file_invalid += 1
                             stop = True
-                        filechecksum_calc = calculate_md5(fullpath)
-                        if filechecksum == filechecksum_calc:
-                            log.info(f"Preprocessing: {fullpath} - md5sum correct")
                         else:
-                            log.error(
-                                f"Preprocessing: {fullpath} - md5sum incorrect - provided: {filechecksum} - calculated: {filechecksum_calc}"
-                            )
-                            if self.__file_invalid == files_invalid:
-                                self.__file_invalid += 1
-                            stop = True
-                        self.__meta_dict[filename] = self.build_dict(
-                            filename,
-                            fullpath,
-                            filechecksum,
-                            filechecksum_enc,
-                            upload_status,
-                        )
-                        log.info(f"Preprocessing: {fullpath} - done")
-                        filepaths.append(str(fullpath))
-                        self.__file_todo += 1
+                            self.__file_todo += 1
+
+                        log.info(f"Preprocessing: {filename} - done")
 
         if stop:
             log.error(
@@ -203,34 +151,6 @@ class Parser(object):
 
     def get_metainfo_file(self, filename):
         return self.__meta_dict[filename]
-
-    def update_json(self, json_file_path, encrypted_md5):
-        CSV_HEADER = [
-            "file_id",
-            "file_location",
-            "original_md5",
-            "filename_encrypted",
-            "encrypted_md5",
-            "upload_status",
-        ]
-        count = 0
-        for donor in self.__json_dict.get("Donors", {}):
-            for lab_data in donor.get("LabData", {}):
-                for sequence_data in lab_data.get("SequenceData", {}):
-                    for files_data in sequence_data.get("files", {}):
-                        filename = files_data["filename"]
-                        meta_dict = self.get_metainfo_file(filename)
-                        files_data[CSV_HEADER[3]] = meta_dict[CSV_HEADER[3]]
-                        files_data[CSV_HEADER[5]] = meta_dict[CSV_HEADER[5]]
-                        files_data["fileChecksum_encrypted"] = encrypted_md5[count]
-                        count += 1
-
-        try:
-            with open(json_file_path, "w") as json_file:
-                json.dump(self.__json_dict, json_file, indent=4)
-            log.info("JSON file updated successfully: %s", json_file_path)
-        except Exception as e:
-            log.error("Failed to update JSON file: %s", e)
 
     def write_json(self):
         log.info(f"Meta information written to: {self.__meta_file}")
@@ -249,16 +169,16 @@ class Parser(object):
         """
         log.info("s3 config file %s", self.__config_file)
         # log.info(f'meta file: {self.__meta_file}')
-        log.info("meta file: %s", self.__json_file)
+        #log.info("meta file: %s", self.__json_file)
         log.info("GRZ public crypt4gh key: %s", self.__pubkey)
-        log.info("log file: %s", logfile)
+        #log.info("log file: %s", logfile)
         log.info("total files in metafile: %s", self.__file_total)
         log.info("uploaded files: %s", self.__file_done)
         log.info("failed files: %s", self.__file_failed)
         log.info("invalid files: %s", self.__file_invalid)
         log.info("waiting files: %s", self.__file_todo)
 
-    def prepare_submission(self, encrypt=True):
+    def encrypt(self):
         """
         Prepare the submission for upload to GRZ S3.
 
@@ -266,93 +186,43 @@ class Parser(object):
         :return: String indicating the status of the submission preparation.
         """
 
-        log.info("Preparing submission...")
+        log.info("Preparing encryption...")
 
-        # Step 1: Prepare directory and metadata file
+        # Step 2: Prepare S3 worker and get encryption key
+
+        #s3_worker = S3UploadWorker(self.__s3_dict, self.__pubkey)
         try:
-            files_dir, metadata_file = self.file_manager.prepare_directory()
-            log.info("Files directory prepared at: %s", files_dir)
+            public_keys = Crypt4GH.prepare_c4gh_keys(self.__pubkey)
+            log.info("Public keys retrieved successfully.")
         except Exception as e:
-            log.error("Failed to prepare directory: %s", e)
-            return "Directory preparation failed"
+            log.error("Failed to prepare public keys: %s", e)
+            return "Public key retrieval failed"
 
-        print(files_dir)
-
-        if encrypt:
-            # Step 2: Prepare S3 worker and get encryption key
-            s3_worker = S3UploadWorker(self.__s3_dict, self.__pubkey)
-            try:
-                public_keys = s3_worker.get_encryption_key()
-                log.info("Public keys retrieved successfully.")
-            except Exception as e:
-                log.error("Failed to prepare public keys: %s", e)
-                return "Public key retrieval failed"
-
-            # Step 3: Encrypt files
-            try:
-                CSV_HEADER = [
-                    "file_id",
-                    "file_location",
-                    "original_md5",
-                    "filename_encrypted",
-                    "encrypted_md5",
-                    "upload_status",
-                ]
-
-                encrypted_file_paths = []
-                for donor in self.__json_dict.get("Donors", {}):
-                    for lab_data in donor.get("LabData", {}):
-                        for sequence_data in lab_data.get("SequenceData", {}):
-                            for files_data in sequence_data.get("files", {}):
-                                filename = files_data["filename"]
-                                filepath = files_data["filepath"]
-                                fullpath = Path(filepath) / filename
-                                meta_dict = self.get_metainfo_file(filename)
-                                files_data[CSV_HEADER[3]] = meta_dict[CSV_HEADER[3]]
-                                files_data[CSV_HEADER[5]] = meta_dict[CSV_HEADER[5]]
-                                output_file_path = fullpath.with_suffix(".c4gh")
-                                original_md5, encrypted_md5 = Crypt4GH.encrypt_file(
-                                    fullpath, output_file_path, public_keys
-                                )
-                                encrypted_file_paths.append(output_file_path)
-                                files_data["fileChecksum_encrypted"] = encrypted_md5
-                                log.info("Encryption successful for file: %s", filename)
-                                log.info("Original MD5: %s", original_md5)
-                                log.info("Encrypted MD5: %s", encrypted_md5)
-            except Exception as e:
-                log.error("Encryption failed for one or more files: %s", e)
-                return "Encryption failed"
-
-            # Step 4: Copy files
-            try:
-                new_file_paths = self.file_manager.copy_files(
-                    encrypted_file_paths, files_dir
-                )
-
-                file_names = [Path(file).name for file in new_file_paths]
-                log.info("Files moved: %s", file_names)
-            except Exception as e:
-                log.error("Failed to move files: %s", e)
-                return "File move failed"
-
-        # Step 5: Copy metadata
+        # Step 3: Encrypt files
         try:
-            self.file_manager.copy_metadata(self.__json_dict, metadata_file)
-            log.info("Metadata moved to: %s", metadata_file)
-        except Exception as e:
-            log.error("Failed to move metadata: %s", e)
-            return "Metadata move failed"
+            self.load_json()
+            log.info("Starting parse json")
+            for donor in self.__json_dict.get("Donors", {}):
+                for lab_data in donor.get("LabData", {}):
+                    for sequence_data in lab_data.get("SequenceData", {}):
+                        for files_data in sequence_data.get("files", {}):
+                            filename = files_data["filepath"]
+                            fullpath = self.__folderpath / "files" / filename
+                            output_file_path = fullpath.with_suffix(".c4gh")
+                            log.info("Encrypting file: %s", filename)
+                            original_sha256, encrypted_sha256 = Crypt4GH.encrypt_file(
+                                fullpath, output_file_path, public_keys
+                            )
 
-        # Step 6: Update file directory
-        try:
-            self.file_manager.update_file_directory(self.__json_dict, files_dir)
-            log.info("File paths updated")
+                            log.info("Encryption successful for file: %s", filename)
+                            log.info("Original SHA256: %s", original_sha256)
+                            log.info("Encrypted SHA256: %s", encrypted_sha256)
         except Exception as e:
-            log.error("Failed to update file directory: %s", e)
-            return "File directory update failed"
+            log.error("Encryption failed for one or more files: %s", e)
+            return "Encryption failed"
 
-        log.info("Submission preparation completed successfully.")
-        return "Submission preparation successful"
+        log.info("Encryption completed successfully.")
+        return "Encryption preparation successful"
 
     def main(self):
         if not self.__config_file.is_file():
@@ -369,12 +239,12 @@ class Parser(object):
                 "Please provide a valid path to the public cryp4gh key (--pubkey_grz)"
             )
             exit(2)
-        self.check_public_key()
+        #self.check_public_key()
 
         if not self.__json_file.is_file():
             log.error("Please provide a valid path to the meta file (--metafile)")
             exit(2)
-        self.check_json()
+        #self.check_json()
 
     def get_json_dict(self):
         return self.__json_dict
