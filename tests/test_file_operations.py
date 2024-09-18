@@ -2,8 +2,15 @@ from math import ceil
 
 from grz_upload.file_operations import (
     calculate_md5,
+    calculate_sha256,
     Crypt4GH,
 )
+
+def test_calculate_sha256(temp_small_input_file: str, temp_small_input_file_sha256):
+    sha256 = calculate_sha256(temp_small_input_file)
+    assert isinstance(sha256, str)
+    assert len(sha256) == 64  # sha256 hash is 64 characters long
+    assert sha256 == temp_small_input_file_sha256
 
 
 def test_calculate_md5(temp_small_input_file: str, temp_small_input_file_md5sum):
