@@ -146,24 +146,30 @@ class Crypt4GH(object):
         :return: tuple with md5 values for original file, encrypted file
         """        
         try:
+            infile = open(input_path, 'rb')
             outfile = open(output_path, 'wb')
             # prepare header
             header_info = Crypt4GH.prepare_header(public_keys)
             outfile.write(header_info[0])
 
-            # read the whole file into memory
-            with open(input_path, "rb") as fd:
-                data = fd.read()
-            # encrypted_data = Crypt4GH.encrypt_part(data, header_info[1], outfile)
-            encrypted_data = Crypt4GH.encrypt_part(data, header_info[1], outfile.write)
-            # add header
-            # encrypted_data = header_info[0] + encrypted_data
 
-            # Calculate SHA256 sums
-            # Write encrypted data to the output file
-            # with open(output_path, "wb") as output_file:
-            #     output_file.write(encrypted_data)
+            segment = bytearray(Crypt4GH.SEGMENT_SIZE)
+
+            while True:
+                segment_len = infile.readinto(segment)
+                if segment_len == 0: # finito
+                    break
+                if segment_len < Crypt4GH.SEGMENT_SIZE: # not a full segment
+                    data = bytes(segment[:segment_len]) # to discard the bytes from the previous segments
+                    Crypt4GH.encrypt_segment(data, outfile.write, header_info[1])
+                    break
+                data = bytes(segment) # this is a full segment
+                Crypt4GH.encrypt_segment(data, outfile.write, header_info[1])
+            outfile.close()
+            infile.close()
+
         except Exception as e:
+            infile.close()
             outfile.close()
             raise e
 
