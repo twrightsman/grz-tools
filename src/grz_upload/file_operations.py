@@ -38,7 +38,7 @@ def calculate_sha256(file_path, chunk_size=2 ** 16):
     total_size = getsize(file_path)
     sha256_hash = sha256()
     with open(file_path, 'rb') as f:
-        with tqdm(total=total_size, unit='B', unit_scale=True, desc="Calculating MD5") as pbar:
+        with tqdm(total=total_size, unit='B', unit_scale=True, desc="Calculating SHA256") as pbar:
             for chunk in iter(lambda: f.read(chunk_size), b""):
                 sha256_hash.update(chunk)
                 pbar.update(len(chunk))
@@ -102,33 +102,38 @@ class Crypt4GH(object):
         return (header_bytes, session_key, keys)
 
     @staticmethod
-    def encrypt_segment(data: bytes, key: bytes) -> bytes:
+    def encrypt_segment(data: bytes, process, key: bytes): # -> bytes:
         """Encrypt 64kb block with crypt4gh"""
         nonce = urandom(12)
         encrypted_data = crypto_aead_chacha20poly1305_ietf_encrypt(
             data, None, nonce, key
         )
-        return nonce + encrypted_data
+        process(nonce)
+        process(encrypted_data)
+        # return nonce + encrypted_data
 
     @staticmethod
-    def encrypt_part(byte_string: bytes, session_key: bytes) -> bytes:
+    def encrypt_part(byte_string: bytes, session_key: bytes, process):# -> bytes:
         """Encrypt incoming chunk, using session_key"""
         data_size = len(byte_string)
         enc_data = b""
         position = 0
-        while True:
-            data_block = b""
-            # Determine how much data to read
-            segment_len = min(Crypt4GH.SEGMENT_SIZE, data_size - position)
-            if segment_len == 0:  # No more data to read
-                break
-            # Read the segment from the byte string
-            data_block = byte_string[position: position + segment_len]
-            # Update the position
-            position += segment_len
-            # Process the data in `segment`
-            enc_data += Crypt4GH.encrypt_segment(data_block, session_key)
-        return enc_data
+        with tqdm(total=data_size, unit="B", unit_scale=True, desc="Encrypting") as pbar:
+            while True:
+                data_block = b""
+                # Determine how much data to read
+                segment_len = min(Crypt4GH.SEGMENT_SIZE, data_size - position)
+                if segment_len == 0:  # No more data to read
+                    break
+                # Read the segment from the byte string
+                data_block = byte_string[position: position + segment_len]
+                # Update the position
+                position += segment_len
+                # Process the data in `segment`
+                # enc_data += Crypt4GH.encrypt_segment(data_block, session_key)
+                Crypt4GH.encrypt_segment(data_block, process, session_key)
+                pbar.update(segment_len)
+        # return enc_data
 
     @staticmethod
     def encrypt_file(input_path, output_path, public_keys):
@@ -139,25 +144,27 @@ class Crypt4GH(object):
         :param s3_object_id: string
         :param keys: tuple[Key]
         :return: tuple with md5 values for original file, encrypted file
-        """
+        """        
         try:
+            outfile = open(output_path, 'wb')
             # prepare header
             header_info = Crypt4GH.prepare_header(public_keys)
+            outfile.write(header_info[0])
 
             # read the whole file into memory
             with open(input_path, "rb") as fd:
                 data = fd.read()
-
-            encrypted_data = Crypt4GH.encrypt_part(data, header_info[1])
+            # encrypted_data = Crypt4GH.encrypt_part(data, header_info[1], outfile)
+            encrypted_data = Crypt4GH.encrypt_part(data, header_info[1], outfile.write)
             # add header
-            encrypted_data = header_info[0] + encrypted_data
+            # encrypted_data = header_info[0] + encrypted_data
 
             # Calculate SHA256 sums
             # Write encrypted data to the output file
-            with open(output_path, "wb") as output_file:
-                output_file.write(encrypted_data)
-
+            # with open(output_path, "wb") as output_file:
+            #     output_file.write(encrypted_data)
         except Exception as e:
+            outfile.close()
             raise e
 
     @staticmethod

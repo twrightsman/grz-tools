@@ -208,12 +208,12 @@ class Parser(object):
                         for files_data in sequence_data.get("files", {}):
                             filename = files_data["filepath"]
                             fullpath = self.__folderpath / "files" / filename
-                            output_file_path = fullpath.with_suffix(".c4gh")
+                            if not fullpath.is_file(): log.error(f"File does not exist: {fullpath}")
+                            output_file_path = fullpath.parent / (fullpath.name + ".c4gh")
+                            original_sha256 = calculate_sha256(fullpath)
                             log.info("Encrypting file: %s", filename)
-                            original_sha256, encrypted_sha256 = Crypt4GH.encrypt_file(
-                                fullpath, output_file_path, public_keys
-                            )
-
+                            Crypt4GH.encrypt_file(fullpath, output_file_path, public_keys)
+                            encrypted_sha256 = calculate_sha256(output_file_path)
                             log.info("Encryption successful for file: %s", filename)
                             log.info("Original SHA256: %s", original_sha256)
                             log.info("Encrypted SHA256: %s", encrypted_sha256)
