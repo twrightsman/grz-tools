@@ -40,6 +40,8 @@ class Parser(object):
         self.__file_total = 0
         self.__file_invalid = 0
         self.file_validator = FileValidator(folderpath)
+        self.__use_s3cmd = False
+        self.__use_s3file = ''
         
         if s3_config:
             self.__config_file = s3_config
@@ -47,11 +49,16 @@ class Parser(object):
             self.__config_file = None
 
 
-    def set_options(self, options, pubkey=True):
+    def set_options(self, options, pubkey=True, s3_config=True):
         self.__folderpath = Path(options["folderpath"]).expanduser()
         self.check_metadata_file()
         if pubkey:
             self.__pubkey = Path(options["public_key"]).expanduser()
+        if s3_config:
+            s3_config_file = Path(options["config_file"]).expanduser()
+            self.__s3_dict = self.read_yaml(s3_config_file)
+            if self.check_yaml(): exit(2)
+            self.__use_s3cmd = options["use_s3cmd"]
 
     def check_metadata_file(self):
         metadata_file = self.__folderpath / "metadata" / "metadata.json"
@@ -86,12 +93,11 @@ class Parser(object):
         failed = False
         for i in temp:
             if i not in self.__s3_dict:
-                #log.error(f"Please provide {i} in {self.__config_file}")
+                log.error(f"Please provide {i} in {self.__config_file}")
                 failed = True
+        
         if "use_https" in self.__s3_dict:
-            if self.__s3_dict["use_https"] and not self.__s3_dict["s3_url"].startswith(
-                "https://"
-            ):
+            if self.__s3_dict["use_https"] and not self.__s3_dict["s3_url"].startswith("https://"):
                 self.__s3_dict["s3_url"] = f'https://{self.__s3_dict["s3_url"]}'
         return failed
     
@@ -224,6 +230,58 @@ class Parser(object):
         log.info("Encryption completed successfully.")
         return "Encryption preparation successful"
 
+    def build_write_s3cfg(self):
+        temp = ['[default]']
+        temp.append(f'access_key = {self.__s3_dict["s3_access_key"]}')
+        temp.append(f'secret_key = {self.__s3_dict["s3_secret"]}')
+        temp.append(f'host_base = {self.__s3_dict["s3_url"]}')
+        temp.append(f'host_bucket = {self.__s3_dict["host_bucket"]}')
+        self.__use_s3file = Path('/tmp') / 's3cfg'
+        with open(self.__use_s3file, 'w') as fileout:
+            fileout.write('\n'.join(temp)+'\n')
+        
+
+    def upload(self):
+        part_upload = True
+        log.info("Preparing upload...")
+        s3_worker = S3UploadWorker(self.__s3_dict, self.__pubkey)
+        # Step 3: Encrypt files
+        try:
+            self.load_json()
+            log.info("Starting parse json")
+            for donor in self.__json_dict.get("Donors", {}):
+                for lab_data in donor.get("LabData", {}):
+                    for sequence_data in lab_data.get("SequenceData", {}):
+                        for files_data in sequence_data.get("files", {}):
+                            filename = files_data["filepath"]
+                            fullpath = self.__folderpath / "files" / filename
+                            if not fullpath.is_file:
+                                log.error(f'File does not exist: {fullpath}')
+                                continue
+                            output_file_path = fullpath.parent / (fullpath.name + ".c4gh")
+                            if not output_file_path.is_file:
+                                log.error(f'File does not exist: {output_file_path}')
+                                continue
+                            if self.__use_s3cmd:
+                                self.build_write_s3cfg()
+                                if part_upload:
+                                    s3_worker._upload_multipart_s3cmd(str(self.__use_s3file), self.__s3_dict['s3_bucket'], str(output_file_path), 50)
+                                else:
+                                    s3_worker._upload_s3cmd(str(self.__use_s3file), self.__s3_dict['s3_bucket'], str(output_file_path))
+                                self.__use_s3file.unlist()
+                            else:
+                                if part_upload:
+                                    s3_worker._multipart_upload(output_file_path, output_file_path.name)
+                                else:
+                                    s3_worker._upload(output_file_path, output_file_path.name)
+
+        except Exception as e:
+            log.error("Upload failed for one or more files: %s", e)
+            return "Upload Failed"
+
+        log.info("Upload completed successfully.")
+        return "Upload Complete"
+
     def main(self):
         if not self.__config_file.is_file():
             log.error(
@@ -264,9 +322,13 @@ class Parser(object):
     def get_pubkey_grz(self):
         return self.__pubkey
 
+    def get_s3_cmd(self):
+        return self.__use_s3cmd
+
     s3_dict = property(get_s3_dict)
     json_dict = property(get_json_dict)
     json_file = property(get_json_file)
     meta_dict = property(get_meta_dict)
     meta_file = property(get_meta_file)
     pubkey_grz = property(get_pubkey_grz)
+    s3_cmd = property(get_s3_cmd)

@@ -1,4 +1,5 @@
 import logging
+from subprocess import Popen, PIPE
 from csv import DictWriter
 from hashlib import md5
 from os.path import getsize
@@ -38,8 +39,8 @@ class S3UploadWorker(object):
 
         self._status_file_path = status_file_path
         self.__s3_dict = s3_dict
-        self.__pubkey_grz_file = pubkey_grz_file
-        self._keys = Crypt4GH.prepare_c4gh_keys(self.__pubkey_grz_file)
+        # self.__pubkey_grz_file = pubkey_grz_file
+        # self._keys = Crypt4GH.prepare_c4gh_keys(self.__pubkey_grz_file)
         self.__file_done = 0
         self.__file_failed = 0
         self.__file_total = 0
@@ -219,12 +220,12 @@ class S3UploadWorker(object):
 
         try:
             # Initialize MD5 calculations
-            original_md5 = md5()
+            # original_md5 = md5()
 
             with open(local_file, "rb") as infile:
                 # Process the file in chunks
                 while chunk := infile.read(S3UploadWorker.MULTIPART_CHUNK_SIZE):
-                    original_md5.update(chunk)
+                    # original_md5.update(chunk)
                     # Upload each chunk
                     part = self.__s3_client.upload_part(
                         Bucket=self.__s3_dict["s3_bucket"],
@@ -245,7 +246,7 @@ class S3UploadWorker(object):
                 MultipartUpload={"Parts": parts},
             )
             progress_bar.close()  # close progress bar
-            return original_md5.hexdigest()
+            # return original_md5.hexdigest()
 
         except Exception as e:
             for i in format_exc().split("\n"):
@@ -265,21 +266,49 @@ class S3UploadWorker(object):
         """
         try:
             # read the whole file into memory
-            with open(local_file, "rb") as fd:
-                data = fd.read()
+            # with open(local_file, "rb") as fd:
+                # data = fd.read()
+            file_obj = open(local_file, 'rb')
 
             # calculate md5sum
-            original_md5 = md5(data)
+            # original_md5 = md5(data)
 
             # Upload data
             self.__s3_client.put_object(
-                Bucket=self.__s3_dict["s3_bucket"], Key=s3_object_id, Body=data
+                Bucket=self.__s3_dict["s3_bucket"], Key=s3_object_id, Body=file_obj
             )
-
-            return original_md5.hexdigest()
+            file_obj.close()
+            # return original_md5.hexdigest()
 
         except Exception as e:
             raise e
+
+    def parse_popen_call(self,commlist):
+        rvalue = True
+        for i in commlist[0].decode('utf-8').split('\n'):
+            if i == '': continue
+            log.info(i)
+        for i in commlist[1].decode('utf-8').split('\n'):
+            if i == '': continue
+            log.error(i)
+            rvalue = False
+        return rvalue
+
+    def _upload_s3cmd(self, cfgfile, bucket, local_file):
+        commandline = ["s3cmd", "-c", f"{cfgfile}", "--disable-multipart", "put", local_file, bucket]
+        print(' '.join(commandline))
+
+        enccall = Popen(commandline, stdout=PIPE, stderr=PIPE)
+        enccall.wait()
+        self.parse_popen_call(enccall.communicate())
+
+    def _upload_multipart_s3cmd(self, cfgfile, bucket, local_file, chunksize = 50):
+        commandline = ["s3cmd", "-c", f"{cfgfile}", f"--multipart-chunk-size-mb={chunksize}", "put", local_file, bucket]
+        print(' '.join(commandline))
+
+        enccall = Popen(commandline, stdout=PIPE, stderr=PIPE)
+        enccall.wait()
+        self.parse_popen_call(enccall.communicate())
 
     def encrypt_upload_files(self, files: Dict[str, str]):
         retval = dict()

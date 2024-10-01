@@ -127,7 +127,6 @@ def encrypt(folderpath, pubkey_grz):
 
     finally:
         log.info("Shutting Down - Live long and prosper")
-
         logging.shutdown()
 
 
@@ -148,19 +147,23 @@ def encrypt(folderpath, pubkey_grz):
     required=False,
     help="metafile in json format for data upload to a GRZ s3 structure",
 )
+# @click.option(
+#     "--pubkey_grz",
+#     metavar="STRING",
+#     type=str,
+#     required=True,
+#     help="public crypt4gh key of the GRZ",
+# )
 @click.option(
-    "--pubkey_grz",
-    metavar="STRING",
-    type=str,
-    required=True,
-    help="public crypt4gh key of the GRZ",
-)
-def upload(config, sumission_file, pubkey_grz):
+    "--use_s3cmd",
+    metavar="BOOLEAN",
+    is_flag = True
+    )
+def upload(config, folderpath, use_s3cmd):
     """
     Uploads a submission file to s3 using the provided configuration.
     Args:
         config (str): The path to the configuration file.
-        sumission_file (str): The path to the submission file.
         pubkey_grz (str): The public key for authentication.
     Returns:
         None
@@ -168,11 +171,23 @@ def upload(config, sumission_file, pubkey_grz):
 
     options = {
         "config_file": config,
-        "meta_file": sumission_file,
-        "public_key": pubkey_grz,
+        "folderpath" : folderpath,
+        "use_s3cmd" : use_s3cmd
     }
 
-    # TODO: Implement the upload logic
+    log.info("starting upload")
+    try:
+
+        parser = Parser(folderpath)
+        parser.set_options(options, False, True)
+        parser.upload()
+
+    except (KeyboardInterrupt, Exception) as e:
+        log.error(format_exc())
+
+    finally:
+        log.info("Shutting Down - Live long and prosper")
+        logging.shutdown()
 
 
 if __name__ == "__main__":
