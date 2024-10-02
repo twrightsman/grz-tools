@@ -20,9 +20,9 @@ def create_bucket(bucket_name, config):
 @mock_aws
 def test_upload(
         temp_small_input_file,
-        temp_small_input_file_md5sum,
+        temp_small_input_file_sha256sum,
         temp_fastq_gz_file,
-        temp_fastq_gz_file_md5sum,
+        temp_fastq_gz_file_sha256sum,
         temp_crypt4gh_public_key_file,
         temp_config_file,
         tmp_path_factory
@@ -44,21 +44,21 @@ def test_upload(
         pubkey_grz_file=temp_crypt4gh_public_key_file
     )
 
-    md5sums = upload_worker.upload_files({
+    sha256sums = upload_worker.upload_files({
         "small_test_file.txt": temp_small_input_file,
         "large_test_file.fastq.gz": temp_fastq_gz_file,
     })
 
-    assert md5sums["small_test_file.txt"] == temp_small_input_file_md5sum
-    assert md5sums["large_test_file.fastq.gz"] == temp_fastq_gz_file_md5sum
+    assert sha256sums["small_test_file.txt"] == temp_small_input_file_sha256sum
+    assert sha256sums["large_test_file.fastq.gz"] == temp_fastq_gz_file_sha256sum
 
-    md5sums = upload_worker.encrypt_upload_files({
+    sha256sums = upload_worker.encrypt_upload_files({
         "small_test_file.txt.c4gh": temp_small_input_file,
         "large_test_file.fastq.gz.c4gh": temp_fastq_gz_file,
     })
 
     # TODO: also test encrypted file md5 sums
-    assert md5sums["small_test_file.txt.c4gh"][0] == temp_small_input_file_md5sum
-    assert md5sums["large_test_file.fastq.gz.c4gh"][0] == temp_fastq_gz_file_md5sum
+    assert sha256sums["small_test_file.txt.c4gh"][0] == temp_small_input_file_sha256sum
+    assert sha256sums["large_test_file.fastq.gz.c4gh"][0] == temp_fastq_gz_file_sha256sum
 
     # TODO: Test download and decryption of files

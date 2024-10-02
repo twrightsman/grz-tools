@@ -7,7 +7,6 @@ import logging
 import logging.config
 import click
 
-
 from grz_upload.logging_setup import add_filelogger
 from grz_upload.parser import Parser
 
@@ -23,11 +22,11 @@ log = logging.getLogger(__name__)
     type=click.Choice(["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]),
     help="Set the log level (default: INFO)",
 )
-def cli(log_file=None, log_level="INFO"):
+def cli(log_file: str = None, log_level: str = "INFO"):
     """
     Command-line interface function for setting up logging.
 
-    Parameters:
+    :param log_file:
     - log_file (str): Path to the log file. If provided, a file logger will be added.
     - log_level (str): Log level for the logger. It should be one of the following:
                        DEBUG, INFO, WARNING, ERROR, CRITICAL.
@@ -46,6 +45,7 @@ def cli(log_file=None, log_level="INFO"):
 
     logging.getLogger(__name__).info("Logging setup complete.")
 
+
 @click.command()
 @click.option(
     "-f",
@@ -55,24 +55,23 @@ def cli(log_file=None, log_level="INFO"):
     required=True,
     help="filepath to the directory containing the data to be uploaded",
 )
-def checksum_validation(folderpath):
+def validate(folderpath: str):
     """
     Validates the checksum of the files in the provided directory.
-    Args:
-        folderpath (str): The path to the directory containing the data files.
-    Raises:
-        Exception: If an error occurs during the checksum validation.
-        Returns:
-        None
+
+    :param folderpath: The path to the directory containing the data files.
+    :raises Exception: If an error occurs during the checksum validation.
     """
     options = {"folderpath": folderpath}
 
     log.info("starting checksum validation...")
     try:
-
         parser = Parser(folderpath)
-        parser.set_options(options, pubkey=False)
+
+        # parser.set_options(options, pubkey=False)
         parser.checksum_validation()
+        parser.is_raw_data()
+
         parser.show_information(logging)
 
     except (KeyboardInterrupt, Exception) as e:
@@ -176,7 +175,7 @@ def upload(config, sumission_file, pubkey_grz):
 
 
 if __name__ == "__main__":
-    cli.add_command(checksum_validation)
+    cli.add_command(validate)
     cli.add_command(encrypt)
     cli.add_command(upload)
     cli()

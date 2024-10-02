@@ -1,6 +1,7 @@
+import io
 import logging
 from csv import DictWriter
-from hashlib import md5
+from hashlib import sha256
 from os.path import getsize
 from traceback import format_exc
 from typing import Dict
@@ -18,9 +19,9 @@ class S3UploadWorker(object):
     CSV_HEADER = [
         "file_id",
         "file_location",
-        "original_md5",
+        "original_sha256",
         "filename_encrypted",
-        "encrypted_md5",
+        "encrypted_sha256",
         "upload_status",
     ]
     MULTIPART_CHUNK_SIZE = 50 * 1024 * 1024  # 50 MB
@@ -86,7 +87,7 @@ class S3UploadWorker(object):
 
         :param file_location: pathlib.Path()
         :param s3_object_id: string
-        :return: tuple with md5 values for original file, encrypted file
+        :return: tuple with sha256 values for original file, encrypted file
         """
         multipart_upload = self.__s3_client.create_multipart_upload(
             Bucket=self.__s3_dict["s3_bucket"], Key=s3_object_id
@@ -103,9 +104,9 @@ class S3UploadWorker(object):
         )
 
         try:
-            # Initialize MD5 calculations
-            original_md5 = md5()
-            encrypted_md5 = md5()
+            # Initialize sha256 calculations
+            original_sha256 = sha256()
+            encrypted_sha256 = sha256()
 
             # prepare header
             header_info = Crypt4GH.prepare_header(self._keys)
@@ -116,16 +117,19 @@ class S3UploadWorker(object):
 
                 # Process and encrypt the file in chunks
                 while chunk := infile.read(S3UploadWorker.MULTIPART_CHUNK_SIZE):
-                    original_md5.update(chunk)
+                    original_sha256.update(chunk)
 
-                    encrypted_chunk = Crypt4GH.encrypt_part(chunk, header_info[1])
+                    buffer = io.BytesIO()
 
                     # add header to the first chunk
                     if not first_chunk_read:
-                        encrypted_chunk = header_info[0] + encrypted_chunk
+                        buffer.write(header_info[0])
                         first_chunk_read = True
 
-                    encrypted_md5.update(encrypted_chunk)
+                    Crypt4GH.encrypt_part(chunk, header_info[1], buffer=buffer)
+                    encrypted_chunk = buffer.getvalue()
+
+                    encrypted_sha256.update(encrypted_chunk)
 
                     # Upload each encrypted chunk
                     part = self.__s3_client.upload_part(
@@ -148,7 +152,7 @@ class S3UploadWorker(object):
                 MultipartUpload={"Parts": parts},
             )
             progress_bar.close()  # close progress bar
-            return original_md5.hexdigest(), encrypted_md5.hexdigest()
+            return original_sha256.hexdigest(), encrypted_sha256.hexdigest()
 
         except Exception as e:
             for i in format_exc().split("\n"):
@@ -165,7 +169,7 @@ class S3UploadWorker(object):
         :param file_location: pathlib.Path()
         :param s3_object_id: string
         :param keys: tuple[Key]
-        :return: tuple with md5 values for original file, encrypted file
+        :return: tuple with sha256 values for original file, encrypted file
         """
         try:
             # prepare header
@@ -175,13 +179,16 @@ class S3UploadWorker(object):
             with open(local_file, "rb") as fd:
                 data = fd.read()
 
-            encrypted_data = Crypt4GH.encrypt_part(data, header_info[1])
-            # add header
-            encrypted_data = header_info[0] + encrypted_data
+            buffer = io.BytesIO()
+            # write header
+            buffer.write(header_info[0])
+            # write data
+            Crypt4GH.encrypt_part(data, header_info[1], buffer=buffer)
+            encrypted_data = buffer.getvalue()
 
-            # Calculate MD5 sums
-            original_md5 = md5(data)
-            encrypted_md5 = md5(encrypted_data)
+            # Calculate sha256 sums
+            original_sha256 = sha256(data)
+            encrypted_sha256 = sha256(encrypted_data)
 
             # Upload data
             self.__s3_client.put_object(
@@ -190,7 +197,7 @@ class S3UploadWorker(object):
                 Body=encrypted_data,
             )
 
-            return original_md5.hexdigest(), encrypted_md5.hexdigest()
+            return original_sha256.hexdigest(), encrypted_sha256.hexdigest()
 
         except Exception as e:
             raise e
@@ -201,7 +208,7 @@ class S3UploadWorker(object):
 
         :param file_location: pathlib.Path()
         :param s3_object_id: string
-        :return: md5 value for uploaded file
+        :return: sha256 value for uploaded file
         """
         multipart_upload = self.__s3_client.create_multipart_upload(
             Bucket=self.__s3_dict["s3_bucket"], Key=s3_object_id
@@ -218,13 +225,13 @@ class S3UploadWorker(object):
         )
 
         try:
-            # Initialize MD5 calculations
-            original_md5 = md5()
+            # Initialize sha256 calculations
+            original_sha256 = sha256()
 
             with open(local_file, "rb") as infile:
                 # Process the file in chunks
                 while chunk := infile.read(S3UploadWorker.MULTIPART_CHUNK_SIZE):
-                    original_md5.update(chunk)
+                    original_sha256.update(chunk)
                     # Upload each chunk
                     part = self.__s3_client.upload_part(
                         Bucket=self.__s3_dict["s3_bucket"],
@@ -245,7 +252,7 @@ class S3UploadWorker(object):
                 MultipartUpload={"Parts": parts},
             )
             progress_bar.close()  # close progress bar
-            return original_md5.hexdigest()
+            return original_sha256.hexdigest()
 
         except Exception as e:
             for i in format_exc().split("\n"):
@@ -261,22 +268,22 @@ class S3UploadWorker(object):
 
         :param file_location: pathlib.Path()
         :param s3_object_id: string
-        :return: md5 values for original file
+        :return: sha256 values for original file
         """
         try:
             # read the whole file into memory
             with open(local_file, "rb") as fd:
                 data = fd.read()
 
-            # calculate md5sum
-            original_md5 = md5(data)
+            # calculate sha256sum
+            original_sha256 = sha256(data)
 
             # Upload data
             self.__s3_client.put_object(
                 Bucket=self.__s3_dict["s3_bucket"], Key=s3_object_id, Body=data
             )
 
-            return original_md5.hexdigest()
+            return original_sha256.hexdigest()
 
         except Exception as e:
             raise e
@@ -290,13 +297,13 @@ class S3UploadWorker(object):
             file_size = getsize(local_file_path)
             if file_size > S3UploadWorker.MAX_SINGLEPART_UPLOAD_SIZE:
                 # do multipart upload
-                md5sums = self._encrypt_and_multipart_upload(
+                sha256sums = self._encrypt_and_multipart_upload(
                     local_file_path, s3_object_id
                 )
             else:
-                md5sums = self._encrypt_and_upload(local_file_path, s3_object_id)
+                sha256sums = self._encrypt_and_upload(local_file_path, s3_object_id)
 
-            retval[s3_object_id] = md5sums
+            retval[s3_object_id] = sha256sums
         return retval
 
     def upload_files(self, files: Dict[str, str]):
@@ -308,9 +315,9 @@ class S3UploadWorker(object):
             file_size = getsize(local_file_path)
             if file_size > S3UploadWorker.MAX_SINGLEPART_UPLOAD_SIZE:
                 # do multipart upload
-                md5sums = self._multipart_upload(local_file_path, s3_object_id)
+                sha256sums = self._multipart_upload(local_file_path, s3_object_id)
             else:
-                md5sums = self._upload(local_file_path, s3_object_id)
+                sha256sums = self._upload(local_file_path, s3_object_id)
 
-            retval[s3_object_id] = md5sums
+            retval[s3_object_id] = sha256sums
         return retval

@@ -10,11 +10,13 @@ Attributes:
     - Crypt4GH.SEGMENT_SIZE: The size of each segment for encryption.
     - Crypt4GH.FILE_EXTENSION: The file extension used for encrypted files.
 """
-
+import hashlib
+import io
 from hashlib import md5, sha256
 from os import urandom
 from os.path import getsize
 import logging
+from typing import BinaryIO, TYPE_CHECKING
 
 # import crypt4gh
 import crypt4gh.header
@@ -22,6 +24,11 @@ import crypt4gh.keys
 from nacl.bindings import crypto_aead_chacha20poly1305_ietf_encrypt
 from nacl.public import PrivateKey
 from tqdm.auto import tqdm
+
+# if TYPE_CHECKING:
+#     from hashlib import _Hash
+# else:
+#     _Hash = None
 
 log = logging.getLogger(__name__)
 
@@ -102,38 +109,45 @@ class Crypt4GH(object):
         return (header_bytes, session_key, keys)
 
     @staticmethod
-    def encrypt_segment(data: bytes, process, key: bytes): # -> bytes:
-        """Encrypt 64kb block with crypt4gh"""
+    def encrypt_64k_segment(data: bytes, session_key: bytes, buffer: BinaryIO):
+        """
+        Encrypt 64kb block of data with crypt4gh
+
+        :param data: 64kb block of data to encrypt
+        :param session_key: The session key with which the data is to be encrypted
+        :param buffer: Encrypted data will be written to this buffer
+        """
         nonce = urandom(12)
         encrypted_data = crypto_aead_chacha20poly1305_ietf_encrypt(
-            data, None, nonce, key
+            data, None, nonce, session_key
         )
-        process(nonce)
-        process(encrypted_data)
-        # return nonce + encrypted_data
+        buffer.write(nonce)
+        buffer.write(encrypted_data)
 
     @staticmethod
-    def encrypt_part(byte_string: bytes, session_key: bytes, process):# -> bytes:
-        """Encrypt incoming chunk, using session_key"""
-        data_size = len(byte_string)
-        enc_data = b""
+    def encrypt_part(data: bytes, session_key: bytes, buffer: BinaryIO):
+        """
+        Encrypt data of arbitrary size with crypt4gh
+
+        :param data: the data to encrypt
+        :param session_key: The session key with which the data is to be encrypted
+        :param buffer: Encrypted data will be written to this buffer
+        """
+        data_size = len(data)
         position = 0
         with tqdm(total=data_size, unit="B", unit_scale=True, desc="Encrypting") as pbar:
             while True:
-                data_block = b""
                 # Determine how much data to read
                 segment_len = min(Crypt4GH.SEGMENT_SIZE, data_size - position)
                 if segment_len == 0:  # No more data to read
                     break
                 # Read the segment from the byte string
-                data_block = byte_string[position: position + segment_len]
+                data_block = data[position: position + segment_len]
                 # Update the position
                 position += segment_len
                 # Process the data in `segment`
-                # enc_data += Crypt4GH.encrypt_segment(data_block, session_key)
-                Crypt4GH.encrypt_segment(data_block, process, session_key)
+                Crypt4GH.encrypt_64k_segment(data_block, session_key, buffer)
                 pbar.update(segment_len)
-        # return enc_data
 
     @staticmethod
     def encrypt_file(input_path, output_path, public_keys):
@@ -144,35 +158,59 @@ class Crypt4GH(object):
         :param s3_object_id: string
         :param keys: tuple[Key]
         :return: tuple with md5 values for original file, encrypted file
-        """        
-        try:
-            infile = open(input_path, 'rb')
-            outfile = open(output_path, 'wb')
+        """
+        with open(input_path, 'rb') as infile, open(output_path, 'wb') as outfile:
+
             # prepare header
             header_info = Crypt4GH.prepare_header(public_keys)
             outfile.write(header_info[0])
 
-
-            segment = bytearray(Crypt4GH.SEGMENT_SIZE)
-
             while True:
-                segment_len = infile.readinto(segment)
-                if segment_len == 0: # finito
+                segment = infile.read(Crypt4GH.SEGMENT_SIZE)  # Read segment directly
+                if not segment:
+                    # End of file
                     break
-                if segment_len < Crypt4GH.SEGMENT_SIZE: # not a full segment
-                    data = bytes(segment[:segment_len]) # to discard the bytes from the previous segments
-                    Crypt4GH.encrypt_segment(data, outfile.write, header_info[1])
-                    break
-                data = bytes(segment) # this is a full segment
-                Crypt4GH.encrypt_segment(data, outfile.write, header_info[1])
-            outfile.close()
-            infile.close()
 
-        except Exception as e:
-            infile.close()
-            outfile.close()
-            raise e
+                Crypt4GH.encrypt_64k_segment(segment, header_info[1], outfile)
+
+                if len(segment) < Crypt4GH.SEGMENT_SIZE:
+                    # End of file
+                    break
 
     @staticmethod
     def decrypt_file(input_path, output_path, private_key):
         raise NotImplementedError()
+
+# class HashLoggingWriter(io.RawIOBase):
+#     def __init__(self, binary_io: io.RawIOBase, hash_algorithm: str = 'sha256'):
+#         self._binary_io = binary_io  # The underlying binary I/O object
+#         self.hash_algorithm = hash_algorithm  # Hashing algorithm (e.g., 'md5', 'sha256', etc.)
+#
+#         # Create the hash object based on the specified algorithm
+#         if hash_algorithm not in hashlib.algorithms_available:
+#             raise ValueError(f"Unsupported hash algorithm: {hash_algorithm}")
+#         self.hash_obj = hashlib.new(hash_algorithm)
+#
+#     def write(self, b: bytes) -> int:
+#         # Update the hash with the bytes being written
+#         self.hash_obj.update(b)
+#         # Write the bytes to the underlying binary IO object
+#         return self._binary_io.write(b)
+#
+#     def read(self, size=-1) -> bytes:
+#         raise NotImplementedError("This class is write-only")
+#
+#     def readinto(self, b: bytearray) -> int:
+#         raise NotImplementedError("This class is write-only")
+#
+#     def flush(self):
+#         # Ensure all data is flushed to the underlying binary IO object
+#         self._binary_io.flush()
+#
+#     def close(self):
+#         # Close the underlying binary IO object
+#         self._binary_io.close()
+#
+#     def get_hash(self) -> _Hash:
+#         # Return the hex digest of the hash
+#         return self.hash_obj

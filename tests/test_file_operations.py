@@ -1,3 +1,4 @@
+import io
 from math import ceil
 
 from grz_upload.file_operations import (
@@ -6,11 +7,12 @@ from grz_upload.file_operations import (
     Crypt4GH,
 )
 
-def test_calculate_sha256(temp_small_input_file: str, temp_small_input_file_sha256):
+
+def test_calculate_sha256(temp_small_input_file: str, temp_small_input_file_sha256sum):
     sha256 = calculate_sha256(temp_small_input_file)
     assert isinstance(sha256, str)
     assert len(sha256) == 64  # sha256 hash is 64 characters long
-    assert sha256 == temp_small_input_file_sha256
+    assert sha256 == temp_small_input_file_sha256sum
 
 
 def test_calculate_md5(temp_small_input_file: str, temp_small_input_file_md5sum):
@@ -44,7 +46,11 @@ def test_Crypt4GH_prepare_header(temp_c4gh_keys: tuple[Crypt4GH.Key]):
 def test_Crypt4GH_encrypt_segment(temp_c4gh_header: tuple[bytes, bytes, tuple[Crypt4GH.Key]]):
     data = b"test segment content"
     key = temp_c4gh_header[1]
-    encrypted_data = Crypt4GH.encrypt_segment(data, key)
+    buffer = io.BytesIO()
+
+    Crypt4GH.encrypt_64k_segment(data, key, buffer=buffer)
+    encrypted_data = buffer.getvalue()
+
     assert isinstance(encrypted_data, bytes)
     # size is larger by 12 nonce and 16 mac(?)
     assert len(encrypted_data) == len(data) + 12 + 16
@@ -54,12 +60,16 @@ def test_Crypt4GH_encrypt_part(temp_small_input_file: str, temp_c4gh_header: tup
     with open(temp_small_input_file, 'rb') as infile:
         byte_string = infile.read()
         session_key = temp_c4gh_header[1]
-        encrypted_part = Crypt4GH.encrypt_part(byte_string, session_key)
-    print(len(encrypted_part))
+        buffer = io.BytesIO()
+
+        Crypt4GH.encrypt_part(byte_string, session_key, buffer=buffer)
+        encrypted_part = buffer.getvalue()
+
     file_size = len(byte_string)
     segment_no = ceil(file_size / Crypt4GH.SEGMENT_SIZE)
-    encrypted_part_size = file_size + segment_no * (12 + 16)
-    assert encrypted_part_size == len(encrypted_part)
+    expected_encrypted_part_size = file_size + segment_no * (12 + 16)
+
+    assert expected_encrypted_part_size == len(encrypted_part)
 
 
 def test_Crypt4GH_encrypt_file(

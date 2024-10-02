@@ -8,6 +8,7 @@ from base64 import b64decode
 from os import environ
 from pathlib import Path
 from traceback import format_exc
+from typing import Dict
 
 from yaml import safe_load, YAMLError
 
@@ -40,12 +41,11 @@ class Parser(object):
         self.__file_total = 0
         self.__file_invalid = 0
         self.file_validator = FileValidator(folderpath)
-        
+
         if s3_config:
             self.__config_file = s3_config
         else:
             self.__config_file = None
-
 
     def set_options(self, options, pubkey=True):
         self.__folderpath = Path(options["folderpath"]).expanduser()
@@ -61,16 +61,14 @@ class Parser(object):
             )
             exit(2)
         self.__json_file = metadata_file
-        
 
-    """
-    Read a yaml file and store details in a dictionary
-    @param filepath: String
-    @rtype: dictionary
-    @return: dictionary of s3 configurations parameter
-    """
+    def read_yaml(self, filepath: str) -> Dict:
+        """
+        Read a yaml file and store details in a dictionary
 
-    def read_yaml(self, filepath):
+        :param filepath: path to configuration file
+        :return: dictionary of s3 configurations parameter
+        """
         temp_dict = {}
         with open(str(filepath), "r", encoding="utf-8") as filein:
             try:
@@ -86,15 +84,15 @@ class Parser(object):
         failed = False
         for i in temp:
             if i not in self.__s3_dict:
-                #log.error(f"Please provide {i} in {self.__config_file}")
+                # log.error(f"Please provide {i} in {self.__config_file}")
                 failed = True
         if "use_https" in self.__s3_dict:
             if self.__s3_dict["use_https"] and not self.__s3_dict["s3_url"].startswith(
-                "https://"
+                    "https://"
             ):
                 self.__s3_dict["s3_url"] = f'https://{self.__s3_dict["s3_url"]}'
         return failed
-    
+
     def load_json(self):
         try:
             with open(str(self.__json_file), "r", encoding="utf-8") as jsonfile:
@@ -109,13 +107,9 @@ class Parser(object):
         """
         Check the validity of a JSON file and process its contents.
 
-        Raises:
-            json.JSONDecodeError: If the provided file is not a valid JSON.
-            FileNotFoundError: If a file specified in the JSON does not exist.
-            ValueError: If the md5sum of a file does not match the provided checksum.
-
-        Returns:
-            None
+        :raises json.JSONDecodeError: If the provided file is not a valid JSON.
+        :raises FileNotFoundError: If a file specified in the JSON does not exist.
+        :raises ValueError: If the md5sum of a file does not match the provided checksum.
         """
         self.load_json()
         stop = False
@@ -129,7 +123,7 @@ class Parser(object):
                         filechecksum = files_data["fileChecksum"]
 
                         is_valid = self.file_validator.validate_file(filename, filechecksum)
-                        
+
                         if not is_valid:
                             self.__file_invalid += 1
                             stop = True
@@ -169,9 +163,9 @@ class Parser(object):
         """
         log.info("s3 config file %s", self.__config_file)
         # log.info(f'meta file: {self.__meta_file}')
-        #log.info("meta file: %s", self.__json_file)
+        # log.info("meta file: %s", self.__json_file)
         log.info("GRZ public crypt4gh key: %s", self.__pubkey)
-        #log.info("log file: %s", logfile)
+        # log.info("log file: %s", logfile)
         log.info("total files in metafile: %s", self.__file_total)
         log.info("uploaded files: %s", self.__file_done)
         log.info("failed files: %s", self.__file_failed)
@@ -190,7 +184,7 @@ class Parser(object):
 
         # Step 2: Prepare S3 worker and get encryption key
 
-        #s3_worker = S3UploadWorker(self.__s3_dict, self.__pubkey)
+        # s3_worker = S3UploadWorker(self.__s3_dict, self.__pubkey)
         try:
             public_keys = Crypt4GH.prepare_c4gh_keys(self.__pubkey)
             log.info("Public keys retrieved successfully.")
@@ -239,12 +233,12 @@ class Parser(object):
                 "Please provide a valid path to the public cryp4gh key (--pubkey_grz)"
             )
             exit(2)
-        #self.check_public_key()
+        # self.check_public_key()
 
         if not self.__json_file.is_file():
             log.error("Please provide a valid path to the meta file (--metafile)")
             exit(2)
-        #self.check_json()
+        # self.check_json()
 
     def get_json_dict(self):
         return self.__json_dict

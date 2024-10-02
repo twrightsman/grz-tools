@@ -44,6 +44,11 @@ def temp_small_input_file_md5sum():
     return "710781ec9efd25b87bfbf8d6cf4030e9"
 
 
+@pytest.fixture()
+def temp_small_input_file_sha256sum():
+    return "78858035d88f0c66d27984789ddd8fa8a8fc633cf7689ac2b4b1e2e7b37ee3be"
+
+
 def create_large_file(input_file, output_file, target_size):
     # Read the content of the original file
     with open(input_file, encoding='utf8') as infile:
@@ -108,6 +113,18 @@ def temp_fastq_gz_file_md5sum(temp_fastq_gz_file):
 
     with open(temp_fastq_gz_file, "rb") as f:
         file_hash = hashlib.md5()
+        while chunk := f.read(8192):
+            file_hash.update(chunk)
+
+    return file_hash.hexdigest()
+
+
+@pytest.fixture
+def temp_fastq_gz_file_sha256sum(temp_fastq_gz_file):
+    import hashlib
+
+    with open(temp_fastq_gz_file, "rb") as f:
+        file_hash = hashlib.sha256()
         while chunk := f.read(8192):
             file_hash.update(chunk)
 
