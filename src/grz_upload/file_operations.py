@@ -16,7 +16,10 @@ from hashlib import md5, sha256
 from os import urandom
 from os.path import getsize
 import logging
-from typing import BinaryIO, TYPE_CHECKING
+from pathlib import Path
+from typing import BinaryIO, Dict, TYPE_CHECKING
+from yaml import dump, safe_load, YAMLError
+
 
 # import crypt4gh
 import crypt4gh.header
@@ -30,7 +33,7 @@ from tqdm.auto import tqdm
 # else:
 #     _Hash = None
 
-log = logging.getLogger(__name__)
+log = logging.getLogger("FileOperations")
 
 
 def calculate_sha256(file_path, chunk_size=2 ** 16):
@@ -45,7 +48,7 @@ def calculate_sha256(file_path, chunk_size=2 ** 16):
     total_size = getsize(file_path)
     sha256_hash = sha256()
     with open(file_path, 'rb') as f:
-        with tqdm(total=total_size, unit='B', unit_scale=True, desc="Calculating SHA256") as pbar:
+        with tqdm(total=total_size, unit='B', unit_scale=True, desc=f"Calculating SHA256 {file_path.name}") as pbar:
             for chunk in iter(lambda: f.read(chunk_size), b""):
                 sha256_hash.update(chunk)
                 pbar.update(len(chunk))
@@ -72,6 +75,34 @@ def calculate_md5(file_path, chunk_size=2 ** 16):
                 pbar.update(len(chunk))
     return md5_hash.hexdigest()
 
+def read_yaml(filepath: Path) -> Dict:
+    """
+    Method reads in a yaml file.
+    
+    :param filepath: pathlib.Path()
+    :rtype: dict
+    :return: The contens of a yaml file as dictionary
+    """
+    temp_dict = {}
+    with open(filepath, "r", encoding="utf-8") as filein:
+        try:
+            temp_dict = safe_load(filein)
+        except YAMLError:
+            temp_dict = {}
+            for i in format_exc().split("\n"):
+                log.error(i)
+    return temp_dict
+
+def write_yaml(filepath: Path, content : Dict):
+    """
+    Method writes a yaml file.
+    
+    :param filepath: pathlib.Path()
+    :param content: dictionary
+    """
+    log.info(f"Data written to: {filepath}")
+    with open(filepath, "w") as fileout:
+        dump(content, fileout, default_flow_style=False)
 
 class Crypt4GH(object):
     Key = tuple[int, bytes, bytes]

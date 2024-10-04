@@ -10,8 +10,9 @@ from pathlib import Path
 from traceback import format_exc
 
 ''' package modules '''
+from grz_upload.file_operations import write_yaml
 from grz_upload.logging_setup import add_filelogger
-from grz_upload.parser import Parser
+from grz_upload.parser import Worker
 
 log = logging.getLogger('ArgumentParser')
 
@@ -70,16 +71,14 @@ def validate(folderpath: str):
     try:
         folderpath = Path(folderpath)
         worker_inst = Worker(folderpath)
-        # TODO: once Parser overhaul is done, modify the lines
-        parser.checksum_validation()
-        parser.is_raw_data()
-
-        parser.show_information(logging)
+        worker_inst.validate_checksum()
+        worker_inst.show_summary("SHA256 checksum validation")
 
     except (KeyboardInterrupt, Exception) as e:
         log.error(format_exc())
 
     finally:
+        if worker_inst.write_progress: write_yaml(worker_inst.progress_file_checksum, worker_inst.get_dict_for_report())
         log.info("Shutting Down - Live long and prosper")
         logging.shutdown()
 

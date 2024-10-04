@@ -10,74 +10,53 @@ from pathlib import Path
 from traceback import format_exc
 from typing import Dict
 
-from yaml import safe_load, YAMLError
+from collections import OrderedDict
 
 from grz_upload.file_operations import Crypt4GH
-from grz_upload.file_operations import calculate_md5, calculate_sha256
+from grz_upload.file_operations import calculate_md5, calculate_sha256, read_yaml
 from grz_upload.file_validator import FileValidator
 from grz_upload.upload import S3UploadWorker
 
-log = logging.getLogger(__name__)
+log = logging.getLogger("Worker")
 
 
-class Parser(object):
-    def __init__(self, folderpath, s3_config=None):
-        self.__parser = ArgumentParser(
-            description="""
-        Manages the encryption and upload of files into the s3 structure of a GRZ.
-        """,
-            formatter_class=RawDescriptionHelpFormatter,
-        )
-        self.__folderpath = ""
-        self.__s3_dict = {}
-        self.__meta_file = None
-        self.__json_file = None
-        self.__meta_dict = {}
-        self.__json_dict = {}
-        self.__pubkey = ""
-        self.__file_done = 0
-        self.__file_todo = 0
-        self.__file_failed = 0
-        self.__file_total = 0
-        self.__file_invalid = 0
-        self.file_validator = FileValidator(folderpath)
+class Worker(object):
+    def __init__(self, folder_path):
+        self.__folderpath = folder_path
+        self.__folder_files = self.__folderpath / "files"
+        self.__folder_meta = self.__folderpath / "metadata"
+        self.__folder_encrypt = self.__folderpath / "encrypt"
+        self.__folder_log = self.__folderpath / "log"
+        
+        self.__metadata_file = self.__folder_meta / "metadata.json"
+        self.__meta_dict = None
+        
+        self.__log = None # own logging instance
 
-        if s3_config:
-            self.__config_file = s3_config
-        else:
-            self.__config_file = None
+        self._create_directory(self.__folder_log, "normal")
+        self.__progress_file_checksum = self.__folder_log / "progress_checksum.yaml"
+        self.__progress_file_encrypt = self.__folder_log / "progress_encrypt.yaml"
+        self.__progress_file_upload = self.__folder_log / "progress_upload.yaml"
+        
+        self.__files_dict = OrderedDict()
+        self.__write_progress = False
 
-    def set_options(self, options, pubkey=True):
-        self.__folderpath = Path(options["folderpath"]).expanduser()
-        self.check_metadata_file()
-        if pubkey:
-            self.__pubkey = Path(options["public_key"]).expanduser()
-
-    def check_metadata_file(self):
-        metadata_file = self.__folderpath / "metadata" / "metadata.json"
-        if not metadata_file.is_file():
-            log.error(
-                f"Please provide a valid path to the metadata file: {metadata_file}"
-            )
-            exit(2)
-        self.__json_file = metadata_file
-
-    def read_yaml(self, filepath: str) -> Dict:
-        """
-        Read a yaml file and store details in a dictionary
-
-        :param filepath: path to configuration file
-        :return: dictionary of s3 configurations parameter
-        """
-        temp_dict = {}
-        with open(str(filepath), "r", encoding="utf-8") as filein:
-            try:
-                temp_dict = safe_load(filein)
-            except YAMLError:
-                temp_dict = {}
-                for i in format_exc().split("\n"):
-                    log.error(i)
-        return temp_dict
+    # def read_yaml(self, filepath: str) -> Dict:
+    #     """
+    #     Read a yaml file and store details in a dictionary
+    #
+    #     :param filepath: path to configuration file
+    #     :return: dictionary of s3 configurations parameter
+    #     """
+    #     temp_dict = {}
+    #     with open(str(filepath), "r", encoding="utf-8") as filein:
+    #         try:
+    #             temp_dict = safe_load(filein)
+    #         except YAMLError:
+    #             temp_dict = {}
+    #             for i in format_exc().split("\n"):
+    #                 log.error(i)
+    #     return temp_dict
 
     def check_yaml(self):
         temp = ("s3_url", "s3_access_key", "s3_secret", "s3_bucket")
@@ -93,15 +72,142 @@ class Parser(object):
                 self.__s3_dict["s3_url"] = f'https://{self.__s3_dict["s3_url"]}'
         return failed
 
-    def load_json(self):
+    def show_summary(self, which: str):
+        before, now, failed, finished = 0, 0, 0, 0
+        self.__log.info(f"Summary: {which}")
+        self.__log.info(f"Total number of files: {len(self.__files_dict)}")
+        for filepath in self.__files_dict:
+            if self.__files_dict[filepath]["checked"]:
+                before += 1
+            else:
+                now += 1
+            if self.__files_dict[filepath]["status"] == "Finished":
+                finished += 1
+            elif self.__files_dict[filepath]["status"] == "Failed":
+                failed += 1
+
+        self.__log.info(f"Total number of files checked before current process: {before}")
+        self.__log.info(f"Total number of files checked in current process: {now}")
+        self.__log.info(f"Total number of failed files: {failed}")
+        self.__log.info(f"Total number of finished files: {finished}")
+        if len(self.__files_dict) == finished:
+            self.__log.info(f"Summary: {which} - Process Complete")
+        else:
+            self.__log.info(f"Summary: {which} - Process Incomplete")
+            self.__log.warning(f"Please tend to any errors before you continue")
+
+    def _get_dictionary(self):
+        return { 'total' : None, 'found' : None, 'checked' : False, 'status' : "in progress", 'checksum' : None}
+
+    '''
+    function creates a directory and throws exception if the directory exists
+    or it cannot create the directory
+    @param dirpath: Path
+    @param typus: string
+    @rtype: boolean
+    @return: boolean
+    '''
+    def _create_directory(self, dirpath : Path, typus : str) -> bool:
         try:
-            with open(str(self.__json_file), "r", encoding="utf-8") as jsonfile:
-                self.__json_dict = json.load(jsonfile)
+            if typus == 'normal': dirpath.mkdir(mode = 0o770, parents = True)
+            elif typus == 'other_exe' : dirpath.mkdir(mode = 0o771, parents = True)
+            elif typus == 'user_only': dirpath.mkdir(mode = 0o700, parents = True)
+            log.warning(f"Directory created: {dirpath}")
+        except FileExistsError:
+            log.info(f"Directory exists: {dirpath}")
+        except OSError:
+            log.error(f"Directory not created created: {dirpath}")
+            return False
+        return True
+
+    '''
+    Method checks if the file exists
+    @rtype: boolean
+    @return: boolean
+    '''
+    # TODO: can go to file_operations
+    def check_metadata_file(self) -> bool:
+        if not self.__metadata_file.is_file(): 
+            self.__log.error(f"Please provide a valid path to the metadata file: {self.__metadata_file}")
+            return False
+        return True
+
+    '''
+    Method reads in a json file.
+    @param filepath: Path
+    @rtype: tuple
+    @return: tuple (boolean, dict)
+    '''
+    # TODO: can go to file_operations
+    def load_json(self, filepath : Path) -> tuple:
+        try:
+            with open(filepath, "r", encoding="utf-8") as jsonfile:
+                json_dict = json.load(jsonfile)
         except json.JSONDecodeError:
-            log.error(
-                f"The provided file at {self.__json_file} is not a valid JSON (option --metafile)."
-            )
-            exit()
+            log.error(f"The provided file is not a valid JSON: {filepath}")
+            return False, None
+        return True, json_dict
+
+    def parse_json(self):
+        valid = True
+        for donor in self.__meta_dict.get("Donors", {}):
+            for lab_data in donor.get("LabData", {}):
+                for sequence_data in lab_data.get("SequenceData", {}):
+                    for files_data in sequence_data.get("files", {}):
+                        filename = files_data["filepath"]
+                        filepath = self.__folderpath / "files" / filename
+                        # check if the file is already in the dictionary, add it to dictionary
+                        if filepath in self.__files_dict:
+                            self.__log.error(f"The filename appears more than once in the metadata file: {filename}")
+                            self.__log.error("Files having more than a single entries are not permitted!")
+                            valid = False
+                        else:
+                            self.__files_dict[filepath] = self._get_dictionary()
+                            self.__files_dict[filepath]['total'] = True
+                        # check if the file exists and add status
+                        if filepath.is_file():
+                            self.__files_dict[filepath]['found'] = True
+                        else:
+                            self.__files_dict[filepath]['found'] = False
+                            self.__log.error(f"The file: {filename} does not exist in {self.__folder_files}")
+                            valid = False
+                        self.__files_dict[filepath]['checksum'] = files_data["fileChecksum"]
+        return valid
+    
+    def get_dict_for_report(self):
+        temp = {str(i) : self.__files_dict[i]['status'] for i in self.__files_dict}
+        return temp
+
+    def validate_checksum(self):
+        self.__log = logging.getLogger("Worker.validate_checksum")
+        self.__log.info('Starting validation of sha256 checksums of sequencing data')
+        if not self.check_metadata_file(): exit(2)
+        valid, self.__meta_dict = self.load_json(self.__metadata_file)
+        if not valid: exit(2)
+        if not self.parse_json(): exit(2)
+        self.__write_progress = True
+        if not self.__progress_file_checksum.is_file():
+            self.__log.info('Progress report for checksum validation does not exist: Start fresh')
+            progress_dict = {}
+        else:
+            self.__log.info('Progress report for checksum validation exist: Picking up where we left')
+            progress_dict = read_yaml(self.__progress_file_checksum)
+            progress_dict = {} if progress_dict is None else {Path(i[0]) : i[1] for i in progress_dict.items()}
+
+        for filepath in self.__files_dict:
+            if filepath in progress_dict and progress_dict[filepath] == 'Finished':
+                self.__log.info(f"Skip file: {filepath.name}, has been checked before - Skipping")
+                self.__files_dict[filepath]["status"] = "Finished"
+                self.__files_dict[filepath]["checked"] = True
+            else:
+                checksum_calc = calculate_sha256(filepath)
+                if checksum_calc != self.__files_dict[filepath]['checksum']:
+                    log.error(f"Provided checksum of file: {filepath.name} does not match calculated checksum: {self.__files_dict[filepath]['checksum']} (metadata) != {checksum_calc} (calculated)")
+                    self.__files_dict[filepath]["status"] = "Failed"
+                else:
+                    log.info(f"Provided checksum of file: {filepath.name} matches calculated checksum")
+                    self.__files_dict[filepath]["status"] = "Finished"
+        self.__log.info('Finished validation of sha256 checksums of sequencing data')
 
     def checksum_validation(self):
         """
@@ -142,35 +248,6 @@ class Parser(object):
             log.info(self.__meta_dict)
             log.warning("All files in the metafile have been already processed")
             exit(1)
-
-    def get_metainfo_file(self, filename):
-        return self.__meta_dict[filename]
-
-    def write_json(self):
-        log.info(f"Meta information written to: {self.__meta_file}")
-        with open(self.__meta_file, "w") as file:
-            json.dump(self.__json_dict, file, indent=4)
-
-    def show_information(self, logfile):
-        """
-        Display information about the current state of the parser.
-
-        Parameters:
-        - logfile (str): The path to the log file.
-
-        Returns:
-        None
-        """
-        log.info("s3 config file %s", self.__config_file)
-        # log.info(f'meta file: {self.__meta_file}')
-        # log.info("meta file: %s", self.__json_file)
-        log.info("GRZ public crypt4gh key: %s", self.__pubkey)
-        # log.info("log file: %s", logfile)
-        log.info("total files in metafile: %s", self.__file_total)
-        log.info("uploaded files: %s", self.__file_done)
-        log.info("failed files: %s", self.__file_failed)
-        log.info("invalid files: %s", self.__file_invalid)
-        log.info("waiting files: %s", self.__file_todo)
 
     def encrypt(self):
         """
@@ -218,49 +295,16 @@ class Parser(object):
         log.info("Encryption completed successfully.")
         return "Encryption preparation successful"
 
-    def main(self):
-        if not self.__config_file.is_file():
-            log.error(
-                "Please provide a valid path to the config file (-c/--config option)"
-            )
-            exit(2)
-        self.__s3_dict = self.read_yaml(self.__config_file)
-        if self.check_yaml():
-            exit(2)
+    def get_log(self):
+        return self.__log
 
-        if not self.__pubkey.is_file():
-            log.error(
-                "Please provide a valid path to the public cryp4gh key (--pubkey_grz)"
-            )
-            exit(2)
-        # self.check_public_key()
+    def get_progress_file_checksum(self):
+        return self.__progress_file_checksum
 
-        if not self.__json_file.is_file():
-            log.error("Please provide a valid path to the meta file (--metafile)")
-            exit(2)
-        # self.check_json()
+    def get_write_progress(self):
+        return self.__write_progress
 
-    def get_json_dict(self):
-        return self.__json_dict
-
-    def get_json_file(self):
-        return self.__json_file
-
-    def get_meta_dict(self):
-        return self.__meta_dict
-
-    def get_meta_file(self):
-        return self.__meta_file
-
-    def get_s3_dict(self):
-        return self.__s3_dict
-
-    def get_pubkey_grz(self):
-        return self.__pubkey
-
-    s3_dict = property(get_s3_dict)
-    json_dict = property(get_json_dict)
-    json_file = property(get_json_file)
-    meta_dict = property(get_meta_dict)
-    meta_file = property(get_meta_file)
-    pubkey_grz = property(get_pubkey_grz)
+    log = property(get_log)
+    progress_file_checksum = property(get_progress_file_checksum)
+    write_progress = property(get_write_progress)
+    
