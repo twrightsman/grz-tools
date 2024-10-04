@@ -1,5 +1,6 @@
 import io
 import logging
+from subprocess import Popen, PIPE
 from csv import DictWriter
 from hashlib import sha256
 from os.path import getsize
@@ -39,8 +40,8 @@ class S3UploadWorker(object):
 
         self._status_file_path = status_file_path
         self.__s3_dict = s3_dict
-        self.__pubkey_grz_file = pubkey_grz_file
-        self._keys = Crypt4GH.prepare_c4gh_keys(self.__pubkey_grz_file)
+        # self.__pubkey_grz_file = pubkey_grz_file
+        # self._keys = Crypt4GH.prepare_c4gh_keys(self.__pubkey_grz_file)
         self.__file_done = 0
         self.__file_failed = 0
         self.__file_total = 0
@@ -271,22 +272,44 @@ class S3UploadWorker(object):
         :return: sha256 values for original file
         """
         try:
-            # read the whole file into memory
             with open(local_file, "rb") as fd:
-                data = fd.read()
+                # calculate sha256sum
+                # original_sha256 = sha256(data)
 
-            # calculate sha256sum
-            original_sha256 = sha256(data)
-
-            # Upload data
-            self.__s3_client.put_object(
-                Bucket=self.__s3_dict["s3_bucket"], Key=s3_object_id, Body=data
-            )
-
-            return original_sha256.hexdigest()
-
+                # Upload data
+                self.__s3_client.put_object(
+                    Bucket=self.__s3_dict["s3_bucket"], Key=s3_object_id, Body=fd
+                )
+            # return original_sha256.hexdigest()
         except Exception as e:
             raise e
+
+    def parse_popen_call(self, commlist):
+        rvalue = True
+        for i in commlist[0].decode('utf-8').split('\n'):
+            if i == '': continue
+            log.info(i)
+        for i in commlist[1].decode('utf-8').split('\n'):
+            if i == '': continue
+            log.error(i)
+            rvalue = False
+        return rvalue
+
+    def _upload_s3cmd(self, cfgfile, bucket, local_file):
+        commandline = ["s3cmd", "-c", f"{cfgfile}", "--disable-multipart", "put", local_file, bucket]
+        print(' '.join(commandline))
+
+        enccall = Popen(commandline, stdout=PIPE, stderr=PIPE)
+        enccall.wait()
+        self.parse_popen_call(enccall.communicate())
+
+    def _upload_multipart_s3cmd(self, cfgfile, bucket, local_file, chunksize=50):
+        commandline = ["s3cmd", "-c", f"{cfgfile}", f"--multipart-chunk-size-mb={chunksize}", "put", local_file, bucket]
+        print(' '.join(commandline))
+
+        enccall = Popen(commandline, stdout=PIPE, stderr=PIPE)
+        enccall.wait()
+        self.parse_popen_call(enccall.communicate())
 
     def encrypt_upload_files(self, files: Dict[str, str]):
         retval = dict()
