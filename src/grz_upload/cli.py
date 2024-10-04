@@ -2,15 +2,18 @@
 CLI module for handling command-line interface operations.
 """
 
-from traceback import format_exc
+''' python modules '''
 import logging
 import logging.config
 import click
+from pathlib import Path
+from traceback import format_exc
 
+''' package modules '''
 from grz_upload.logging_setup import add_filelogger
 from grz_upload.parser import Parser
 
-log = logging.getLogger(__name__)
+log = logging.getLogger('ArgumentParser')
 
 
 @click.group()
@@ -51,24 +54,23 @@ def cli(log_file: str = None, log_level: str = "INFO"):
     "-f",
     "--folderpath",
     metavar="STRING",
-    type=str,
+    type=click.Path(exists=True, file_okay=False, dir_okay=True, readable=True, resolve_path=True),
     required=True,
     help="filepath to the directory containing the data to be uploaded",
 )
 def validate(folderpath: str):
     """
-    Validates the checksum of the files in the provided directory.
+    Validates the sha256 checksum of the sequence data files. This command must be executed before the encryption and upload can start.
 
-    :param folderpath: The path to the directory containing the data files.
-    :raises Exception: If an error occurs during the checksum validation.
+    Folderpath: The main path to the directory containing sub directories with the sequence data and metainformation.\n
+    Exception: Is raised if an error occurs during the checksum validation.
     """
-    options = {"folderpath": folderpath}
 
-    log.info("starting checksum validation...")
+    log.info("Starting checksum validation...")
     try:
-        parser = Parser(folderpath)
-
-        # parser.set_options(options, pubkey=False)
+        folderpath = Path(folderpath)
+        worker_inst = Worker(folderpath)
+        # TODO: once Parser overhaul is done, modify the lines
         parser.checksum_validation()
         parser.is_raw_data()
 
@@ -80,7 +82,6 @@ def validate(folderpath: str):
     finally:
         log.info("Shutting Down - Live long and prosper")
         logging.shutdown()
-
 
 @click.command()
 @click.option(
