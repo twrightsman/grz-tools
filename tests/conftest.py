@@ -147,14 +147,11 @@ def temp_metadata_file(data_dir, temp_large_input_file):
         metadata = json.load(fd)
 
     # insert large file
-    metadata["Donors"][0]["LabData"][0]["SequenceData"][0]["files"][0]["filepath"] = \
-        temp_large_input_file
+    metadata["Donors"][0]["labData"][0]["sequenceData"][0]["files"][0]["filepath"] = str(temp_large_input_file)
 
     metadata_file = data_dir.join("metadata.json")
-    with open(metadata_file, 'w') as f:
-        f.write(
-            metadata.format({"replace_dir": str(data_dir)})
-        )
+    with open(metadata_file, 'w') as fd:
+        json.dump(metadata, fd)
     return str(metadata_file)
 
 

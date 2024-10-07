@@ -1,200 +1,234 @@
 {
-    "comments": [
-        "As we have here multiple 1:n relations we could model that to reduce duplicated entries, but I think to ease the process we can have multiple duplicated entries, e.g. pipelines across multiple donors."
-    ],
-    "submission": {
-        "comments": [
-            "Main Information about submission and submitter."
-        ],
-        "submissionDate": "2024-07-15",
-        "submissionType": "initial",
-        "indexCaseId": "aaaaaaaa00000000aaaaaaaa00000000",
-        "submitterId": "260914050",
-        "clinicalDataNodeId": "KDK000001",
-        "labName": "Institute für Humangenetik am Klinikum rechts der Isar"
-    },
-    "donors": [
+  "Submission": {
+    "submissionDate": "2024-07-15",
+    "submissionType": "initial",
+    "submitterId": "260914050",
+    "indexCaseId": "aaaaaaaa00000000aaaaaaaa00000000",
+    "GenomicDataCenterId": "KDK000001",
+    "labName": "Institute für Humangenetik am Klinikum rechts der Isar"
+  },
+  "Donors": [
+    {
+      "caseID": "aaaaaaaa00000000aaaaaaaa00000000",
+      "gender": "female",
+      "relation": "index patient",
+      "MVConsentDate": "2024-07-05",
+      "MVConsentPresentedDate": "2024-07-05",
+      "MVConsentVersion": "1.7.1b",
+      "MVConsentScope": {
+        "ConsentMVSequencing": true,
+        "ConsentCaseIdentification": true,
+        "ConsentReIdentification": true
+      },
+      "labData": [
         {
-            "comments": [
-                "We can have multiple donors, e.g. index patient plus family members and each with a different consent."
-            ],
-            "localCaseID": "aaaaaaaa00000000aaaaaaaa00000000",
-            "gender": "female",
-            "researchConsentDate": "2024-07-05",
-            "researchConsentPresentedDate": "2024-07-05",
-            "researchConsentVersion": "1.7.1b",
-            "researchConsent": "MII Consent FHIR Resource ID ToDo XXX",
-            "participationConsentGiven": true,
-            "caseIdentificationConsentGiven": true,
-            "reContactConsentGiven": true,
-            "relation": "index patient",
-            "labData": [
+          "labDataName": "Blut DNA normal",
+          "tissueOntology": {
+            "name": "Human Tissue Ontology",
+            "version": "v1.2.3"
+          },
+          "tissueTypeId": "HTO:0000171",
+          "tissueTypeName": "Blood",
+          "sampleConservation": "fresh-tissue",
+          "sequenceType": "dna",
+          "sequenceSubtype": "germline",
+          "fragmentationMethod": "sonication",
+          "libraryType": "wes",
+          "libraryPrepkit": {
+            "name": "Agilent SureSelect Human All Exon",
+            "version": "v6"
+          },
+          "libraryPrepkitManufacturer": "Agilent",
+          "sequencerModel": "Illumina HiSeq X",
+          "sequencerManufacturer": "Illumina",
+          "kitName": "Illumina NovaSeq S4 flow cell",
+          "kitManufacturer": "Illumina",
+          "enrichmentKitManufacturer": "Illumina",
+          "enrichmentKitdescription": "TruSeq RNA Access Library Prep Kit v2.0",
+          "barcode": "ATCACG",
+          "sequencingLayout": "paired-end",
+          "sequenceData": [
+            {
+              "bioinformaticsPipelineName": "In-House Pipeline",
+              "referenceGenome": "GRCh38",
+              "bioinformaticsPipelineVersion": "2e70912",
+              "percentBasesQ30": 95.4,
+              "meanDepthOfCoverage": 92.4,
+              "minCoverage": 25.4,
+              "targetedRegionsAboveMinCoverage": 0.96,
+              "readLength": 150,
+              "nonCodingVariants": true,
+              "callerUsed": [
                 {
-                    "comments": [
-                        "All information about the lab data. We could have multiple tissues or technologies, e.g. blood and tumor or DNA and RNA."
-                    ],
-                    "labDataName": "Blut DNA normal",
-                    "tissueType": "Blut",
-                    "sampleType": "fresh-tissue",
-                    "sequenceType": "dna",
-                    "sequenceSubtype": "germline",
-                    "libraryType": "wes",
-                    "targetRegionFile": "What do we put here? I advocate for the actual file. A file path does not help here. If file, I would go with same info as in SequenceData",
-                    "fragmentationMethod": "sonication",
-                    "libraryPrepkit": "Agilent SureSelect Human All Exon V6",
-                    "libraryPrepkitManufacturer": "Agilent",
-                    "sequencerModel": "Illumina HiSeq X",
-                    "sequencerManufacturer": "Illumina",
-                    "kitName": "Illumina NovaSeq S4 flow cell",
-                    "kitManufacturer": "Illumina",
-                    "barcode": "ATCACG",
-                    "endType": "paired-end",
-                    "sequenceData": [
-                        {
-                            "comments": [
-                                "The pipeline should be the same for one LabData entity but we can have multiple files."
-                            ],
-                            "bioinformaticsPipelineName": "In-House Pipeline",
-                            "referenceGenome": "GRCh38",
-                            "bioinformaticsPipelineVersion": "2e70912",
-                            "percentBasesQ30": 95.4,
-                            "meanDepthOfCoverage": 92.4,
-                            "minCoverage": 25.4,
-                            "targetedRegionsAboveMinCoverage": 164.5,
-                            "files": [
-                                {
-                                    "filename": "aaaaaaaa00000000aaaaaaaa00000000.bam",
-                                    "filetype": "bam",
-                                    "fileChecksum": "0358a9852adc88c77e7321ddfb07caf2e9911986a90ff76816be142f6f38122d",
-                                    "fileSizeInBytes": 116993
-                                },
-                                {
-                                    "filename": "aaaaaaaa00000000aaaaaaaa00000000.bam.bai",
-                                    "filetype": "bai",
-                                    "fileChecksum": "dff17f44372cd5f6b942108b2d6d23ddd49d3b1462154d4267547801451651a7",
-                                    "fileSizeInBytes": 185528
-                                }
-                            ]
-                        }
-                    ]
+                  "name": "Mutect2",
+                  "version": "v4.1.8.1"
                 },
                 {
-                    "comments": [
-                        "This is an additional biosample for the example of tumor-normal."
-                    ],
-                    "labDataName": "Blut DNA Tumor",
-                    "tissueType": "Tumor",
-                    "sampleType": "fresh-tissue",
-                    "sequenceType": "dna",
-                    "sequenceSubtype": "somatic",
-                    "libraryType": "wes",
-                    "targetRegionFile": "What do we put here? I advocate for the actual file. A file path does not help here. If file, I would go with same info as in SequenceData",
-                    "fragmentationMethod": "sonication",
-                    "libraryPrepkit": "Agilent SureSelect Human All Exon V6",
-                    "libraryPrepkitManufacturer": "Agilent",
-                    "sequencerModel": "Illumina HiSeq X",
-                    "sequencerManufacturer": "Illumina",
-                    "kitName": "Illumina NovaSeq S4 flow cell",
-                    "kitManufacturer": "Illumina",
-                    "barcode": "GGTACTA",
-                    "endType": "paired-end",
-                    "sequenceData": [
-                        {
-                            "comments": [
-                                "The pipeline should be the same for one LabData entity but we can have multiple files."
-                            ],
-                            "bioinformaticsPipelineName": "In-House Pipeline",
-                            "referenceGenome": "GRCh38",
-                            "bioinformaticsPipelineVersion": "2e70912",
-                            "percentBasesQ30": 95.4,
-                            "meanDepthOfCoverage": 92.4,
-                            "minCoverage": 25.4,
-                            "targetedRegionsAboveMinCoverage": 164.5,
-                            "files": [
-                                {
-                                    "filename": "aaaaaaaa00000000aaaaaaaa00000001.bam",
-                                    "filetype": "bam",
-                                    "fileChecksum": "0358a9852adc88c77e7321ddfb07caf2e9911986a90ff76816be142f6f38122d",
-                                    "fileSizeInBytes": 116642
-                                },
-                                {
-                                    "filename": "aaaaaaaa00000000aaaaaaaa00000001.bam.bai",
-                                    "filetype": "bai",
-                                    "fileChecksum": "20dec7e5094867f607febfab9694c31bd2189b71042f3b9d253e65ac92680673",
-                                    "fileSizeInBytes": 98400
-                                }
-                            ]
-                        }
-                    ]
+                  "name": "Strelka2",
+                  "version": "v2.9.10"
+                },
+                {
+                  "name": "VarScan",
+                  "version": "v2.4.3"
                 }
-            ]
+              ],
+              "files": [
+                {
+                  "filePath": "GRCh38_target_region_file.bed",
+                  "fileType": "bed",
+                  "fileChecksum": "0358a9852adc88c77e7321ddfb07caf2e9911986a90ff76816be142f6f38122d",
+                  "fileSizeInBytes": 116993
+                },
+                {
+                  "filePath": "aaaaaaaa00000000aaaaaaaa00000000.bam",
+                  "fileType": "bam",
+                  "fileChecksum": "0358a9852adc88c77e7321ddfb07caf2e9911986a90ff76816be142f6f38122d",
+                  "fileSizeInBytes": 116993
+                }
+              ]
+            }
+          ]
         },
         {
-            "comments": [
-                "This is the second donor, e.g. father of the index patient"
-            ],
-            "localCaseID": "aaaaaaaa00000000aaaaaaaa00000002",
-            "gender": "male",
-            "researchConsentDate": "2024-07-15",
-            "researchConsentPresentedDate": "2024-07-15",
-            "researchConsentVersion": "1.7.1b",
-            "researchConsent": "MII Consent FHIR Resource ID ToDo XXX",
-            "participationConsentGiven": true,
-            "caseIdentificationConsentGiven": true,
-            "reContactConsentGiven": false,
-            "relation": "father",
-            "labData": [
+          "labDataName": "Blut DNA Tumor",
+          "tissueOntology": {
+            "name": "Human Tissue Ontology",
+            "version": "v1.2.3"
+          },
+          "tissueTypeId": "HTO:0000171",
+          "tissueTypeName": "Tumor",
+          "sampleConservation": "fresh-tissue",
+          "sequenceType": "dna",
+          "sequenceSubtype": "somatic",
+          "fragmentationMethod": "sonication",
+          "libraryType": "wes",
+          "libraryPrepkit": {
+            "name": "Agilent SureSelect Human All Exon",
+            "version": "v6"
+          },
+          "libraryPrepkitManufacturer": "Agilent",
+          "sequencerModel": "Illumina HiSeq X",
+          "sequencerManufacturer": "Illumina",
+          "kitName": "Illumina NovaSeq S4 flow cell",
+          "kitManufacturer": "Illumina",
+          "enrichmentKitManufacturer": "Illumina",
+          "enrichmentKitdescription": "TruSeq RNA Access Library Prep Kit v2.0",
+          "barcode": "GGTACTA",
+          "sequencingLayout": "paired-end",
+          "sequenceData": [
+            {
+              "bioinformaticsPipelineName": "In-House Pipeline",
+              "referenceGenome": "GRCh38",
+              "bioinformaticsPipelineVersion": "2e70912",
+              "percentBasesQ30": 95.4,
+              "meanDepthOfCoverage": 92.4,
+              "minCoverage": 25.4,
+              "targetedRegionsAboveMinCoverage": 0.96,
+              "readLength": 150,
+              "nonCodingVariants": true,
+              "callerUsed": [
                 {
-                    "comments": [
-                        "All information about the lab data. We could have multiple tissues or technologies, e.g. blood and tumor or DNA and RNA."
-                    ],
-                    "labDataName": "Blut DNA normal",
-                    "tissueType": "Blut",
-                    "sampleType": "fresh-tissue",
-                    "sequenceType": "dna",
-                    "sequenceSubtype": "germline",
-                    "libraryType": "wes",
-                    "targetRegionFile": "What do we put here? I advocate for the actual file. A file path does not help here. If file, I would go with same info as in SequenceData",
-                    "fragmentationMethod": "sonication",
-                    "libraryPrepkit": "Agilent SureSelect Human All Exon V6",
-                    "libraryPrepkitManufacturer": "Agilent",
-                    "sequencerModel": "Illumina HiSeq X",
-                    "sequencerManufacturer": "Illumina",
-                    "kitName": "Illumina NovaSeq S4 flow cell",
-                    "kitManufacturer": "Illumina",
-                    "barcode": "TTGACA",
-                    "endType": "paired-end",
-                    "sequenceData": [
-                        {
-                            "comments": [
-                                "The pipeline should be the same for one LabData entity but we can have multiple files."
-                            ],
-                            "bioinformaticsPipelineName": "In-House Pipeline",
-                            "referenceGenome": "GRCh38",
-                            "bioinformaticsPipelineVersion": "2e70912",
-                            "percentBasesQ30": 95.4,
-                            "meanDepthOfCoverage": 92.4,
-                            "minCoverage": 25.4,
-                            "targetedRegionsAboveMinCoverage": 164.5,
-                            "files": [
-                                {
-                                    "filename": "aaaaaaaa00000000aaaaaaaa00000002.bam",
-                                    "filetype": "bam",
-                                    "fileChecksum": "b3213e180f6003cee93668aa7d01366046f9b7a04907a6566ab52bd3059c2ce2",
-                                    "fileSizeInBytes": 116314
-                                },
-                                {
-                                    "filename": "aaaaaaaa00000000aaaaaaaa00000002.bam.bai",
-                                    "filetype": "bai",
-                                    "fileChecksum": "e377263a14dcc7b2d7a37a49413c7d366ed3e22cef26cc0bd3ce203df899fbc1",
-                                    "fileSizeInBytes": 30320
-                                }
-                            ]
-                        }
-                    ]
+                  "name": "Mutect2",
+                  "version": "v4.1.8.1"
+                },
+                {
+                  "name": "Strelka2",
+                  "version": "v2.9.10"
+                },
+                {
+                  "name": "VarScan",
+                  "version": "v2.4.3"
                 }
-            ]
+              ],
+              "files": [
+                {
+                  "filePath": "aaaaaaaa00000000aaaaaaaa00000001.bam",
+                  "fileType": "bam",
+                  "fileChecksum": "0358a9852adc88c77e7321ddfb07caf2e9911986a90ff76816be142f6f38122d",
+                  "fileSizeInBytes": 116642
+                }
+              ]
+            }
+          ]
         }
-    ]
+      ]
+    },
+    {
+      "caseID": "aaaaaaaa00000000aaaaaaaa00000002",
+      "gender": "male",
+      "relation": "father",
+      "MVConsentDate": "2024-07-15",
+      "MVConsentPresentedDate": "2024-07-15",
+      "MVConsentVersion": "1.7.1b",
+      "MVConsentScope": {
+        "ConsentMVSequencing": true,
+        "ConsentCaseIdentification": true,
+        "ConsentReIdentification": true
+      },
+      "labData": [
+        {
+          "labDataName": "Blut DNA normal",
+          "tissueOntology": {
+            "name": "Human Tissue Ontology",
+            "version": "v1.2.3"
+          },
+          "tissueTypeId": "HTO:0000171",
+          "tissueTypeName": "Blood",
+          "sampleConservation": "fresh-tissue",
+          "sequenceType": "dna",
+          "sequenceSubtype": "germline",
+          "fragmentationMethod": "sonication",
+          "libraryType": "wes",
+          "libraryPrepkit": {
+            "name": "Agilent SureSelect Human All Exon",
+            "version": "v6"
+          },
+          "libraryPrepkitManufacturer": "Agilent",
+          "sequencerModel": "Illumina HiSeq X",
+          "sequencerManufacturer": "Illumina",
+          "kitName": "Illumina NovaSeq S4 flow cell",
+          "kitManufacturer": "Illumina",
+          "enrichmentKitManufacturer": "Illumina",
+          "enrichmentKitdescription": "TruSeq RNA Access Library Prep Kit v2.0",
+          "barcode": "TTGACA",
+          "sequencingLayout": "paired-end",
+          "sequenceData": [
+            {
+              "bioinformaticsPipelineName": "In-House Pipeline",
+              "referenceGenome": "GRCh38",
+              "bioinformaticsPipelineVersion": "2e70912",
+              "percentBasesQ30": 95.4,
+              "meanDepthOfCoverage": 92.4,
+              "minCoverage": 25.4,
+              "targetedRegionsAboveMinCoverage": 0.96,
+              "readLength": 150,
+              "nonCodingVariants": true,
+              "callerUsed": [
+                {
+                  "name": "Mutect2",
+                  "version": "v4.1.8.1"
+                },
+                {
+                  "name": "Strelka2",
+                  "version": "v2.9.10"
+                },
+                {
+                  "name": "VarScan",
+                  "version": "v2.4.3"
+                }
+              ],
+              "files": [
+                {
+                  "filePath": "aaaaaaaa00000000aaaaaaaa00000002.bam",
+                  "fileType": "bam",
+                  "fileChecksum": "b3213e180f6003cee93668aa7d01366046f9b7a04907a6566ab52bd3059c2ce2",
+                  "fileSizeInBytes": 116314
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
 }
-
