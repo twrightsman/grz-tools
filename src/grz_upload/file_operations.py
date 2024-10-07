@@ -1,25 +1,23 @@
 from __future__ import annotations
 
-import os
 import io
 import json
 import logging
+import os
+from functools import partial
+from getpass import getpass
 from hashlib import md5, sha256
-from io import BytesIO, StringIO
 from os import urandom
 from os.path import getsize
 from pathlib import Path
-from typing import BinaryIO, Dict, TextIO, Tuple
+from typing import BinaryIO, TextIO, Tuple
 
-from getpass import getpass
-from functools import partial
-import crypt4gh.lib
 import crypt4gh.header
 import crypt4gh.keys
+import crypt4gh.lib
 from nacl.bindings import crypto_aead_chacha20poly1305_ietf_encrypt
 from nacl.public import PrivateKey
 from tqdm.auto import tqdm
-from yaml import dump, safe_load, YAMLError
 
 # if TYPE_CHECKING:
 #     from hashlib import _Hash
@@ -125,9 +123,6 @@ class Crypt4GH(object):
     VERSION = 1
     SEGMENT_SIZE = 65536
     FILE_EXTENSION = ".c4gh"
-
-    def __init__(self, logger):
-        self.__logger = logger
 
     @staticmethod
     def prepare_c4gh_keys(public_key_file_path: str) -> tuple[Key]:

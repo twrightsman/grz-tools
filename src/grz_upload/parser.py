@@ -3,8 +3,6 @@ from __future__ import annotations
 import copy
 import json
 import logging
-import os.path
-from importlib.metadata import files
 from pathlib import Path
 from typing import Dict
 
@@ -18,6 +16,8 @@ log = logging.getLogger(__name__)
 
 
 class SubmissionMetadata:
+    __log = log.getChild("SubmissionMetadata")
+
     def __init__(self, metadata_file):
         """
         Class for reading and validating submission metadata
@@ -35,8 +35,8 @@ class SubmissionMetadata:
 
         self._files = None
 
-    @staticmethod
-    def _read_metadata(file_path: Path) -> dict:
+    @classmethod
+    def _read_metadata(cls, file_path: Path) -> dict:
         """
         Load and parse the metadata file in JSON format.
 
@@ -48,7 +48,7 @@ class SubmissionMetadata:
                 metadata = json.load(jsonfile)
                 return metadata
         except json.JSONDecodeError as e:
-            log.error("Invalid JSON format in metadata file: %s", file_path)
+            cls.__log.error("Invalid JSON format in metadata file: %s", file_path)
             raise e
 
     def _validate_schema(self, schema=GRZ_METADATA_JSONSCHEMA):
@@ -61,11 +61,17 @@ class SubmissionMetadata:
         try:
             jsonschema.validate(self.content, schema=schema)
         except jsonschema.exceptions.ValidationError as e:
-            log.error("Invalid JSON schema in metadata file '%s'", self.file_path)
+            self.__log.error("Invalid JSON schema in metadata file '%s'", self.file_path)
             raise e
 
     @property
     def files(self) -> Dict:
+        """
+        The files liked in the metadata.
+
+        :return: Dictionary of `file_path` -> `file_info` pairs.
+            Each `file_path` refers to the relative file path from the metadata.
+        """
         if self._files is not None:
             return self._files
 
@@ -98,11 +104,11 @@ class SubmissionMetadata:
         return submission_files
 
     def validate(self):
-        log.debug(self.files)
+        self.__log.debug(self.files)
         all_valid = True
         for file_path, file_info in self.files.items():
             if not file_info["valid"]:
-                log.error("%s: %s", file_path.name, file_info["invalid_reason"])
+                self.__log.error("%s: %s", file_path.name, file_info["invalid_reason"])
 
                 all_valid = False
 
@@ -122,6 +128,8 @@ class SubmissionValidationError(Exception):
 
 
 class Submission:
+    __log = log.getChild("Submission")
+
     def __init__(self, metadata_dir: str | Path, files_dir: str | Path):
         self.metadata_dir = Path(metadata_dir)
         self.files_dir = Path(files_dir)
@@ -150,21 +158,21 @@ class Submission:
         # - "expected_checksum": str
         # - "calculated_checksum": str
         # - "checksum_correct": bool
-        log.info('Starting checksum validation.')
+        self.__log.info('Starting checksum validation.')
 
         all_checksums_correct = True
         for file_path, file_info in self.files.items():
             try:
                 logged_state = progress_logger.get_state(file_path)
             except FileNotFoundError:
-                log.error("Missing file: %s", file_path.name)
+                self.__log.error("Missing file: %s", file_path.name)
                 all_checksums_correct = False
                 continue
 
             # check if file is actually a file
             if not file_path.is_file():
                 all_checksums_correct = False
-                log.error("Path is not a file: %s", file_path.name)
+                self.__log.error("Path is not a file: %s", file_path.name)
                 continue
 
             try:
@@ -174,9 +182,9 @@ class Submission:
                 checksum_correct = logged_state['checksum_correct']
             except (KeyError, TypeError) as e:
                 if isinstance(e, KeyError):
-                    log.error("Invalid state: %s; Recalculating...", logged_state)
+                    self.__log.error("Invalid state: %s; Recalculating...", logged_state)
                 elif isinstance(e, TypeError):
-                    log.debug("State for %s not calculated yet", file_path)
+                    self.__log.debug("State for %s not calculated yet", file_path)
 
                 # calculate checksum
                 expected_checksum = file_info['expected_checksum']
@@ -190,17 +198,17 @@ class Submission:
                 })
 
             if checksum_correct:
-                log.info(f"Checksum validated for {file_path.name}.")
+                self.__log.info(f"Checksum validated for {file_path.name}.")
             else:
-                log.error(
+                self.__log.error(
                     f"Checksum mismatch for {file_path.name}! Expected: {expected_checksum}, calculated: {calculated_checksum}"
                 )
                 all_checksums_correct = False
 
         if all_checksums_correct:
-            log.info('Checksum validation completed without errors.')
+            self.__log.info('Checksum validation completed without errors.')
         else:
-            log.error("Checksum validation failed.")
+            self.__log.error("Checksum validation failed.")
             # TODO: print summary of failed files
 
             raise SubmissionValidationError("Submission validation failed. Check log file for details.")
@@ -228,7 +236,7 @@ class Submission:
         try:
             public_keys = Crypt4GH.prepare_c4gh_keys(public_key_file_path)
         except Exception as e:
-            log.error(f"Error preparing public keys: {e}")
+            self.__log.error(f"Error preparing public keys: {e}")
             raise e
 
         for file_path, file_info in self.files.items():
@@ -236,7 +244,7 @@ class Submission:
             try:
                 logged_state = progress_logger.get_state(file_path)
             except FileNotFoundError as e:
-                log.error("Missing file: %s", file_path.name)
+                self.__log.error("Missing file: %s", file_path.name)
 
                 # TODO: Do we want to raise an exception and stop here or
                 #  do we want to continue with the remaining files?
@@ -244,7 +252,7 @@ class Submission:
                 # continue
                 raise e
 
-            log.info("Encrypting file: %s", file_path.name)
+            self.__log.info("Encrypting file: %s", file_path.name)
             encrypted_file_path = EncryptedSubmission.get_encrypted_file_path(file_path)
             # TODO: write header to separate file
             # encryption_header_path = EncryptedSubmission.get_encrypted_file_path(file_path)
@@ -252,20 +260,22 @@ class Submission:
             try:
                 Crypt4GH.encrypt_file(file_path, encrypted_file_path, public_keys)
 
-                log.info(
+                self.__log.info(
                     f"Encryption complete for {file_path.name}. "
                 )
             except Exception as e:
-                log.error("Encryption failed for '%s'", file_path.name)
+                self.__log.error("Encryption failed for '%s'", file_path.name)
 
                 raise e
 
-        log.info("File encryption completed.")
+        self.__log.info("File encryption completed.")
 
         return EncryptedSubmission(metadata_dir=self.metadata_dir, encrypted_files_dir=encrypted_files_dir)
 
 
 class EncryptedSubmission:
+    __log = log.getChild("EncryptedSubmission")
+
     def __init__(self, metadata_dir: str | Path, encrypted_files_dir: str | Path):
         self.metadata_dir = Path(metadata_dir)
         self.encrypted_files_dir = Path(encrypted_files_dir)
@@ -308,6 +318,8 @@ class EncryptedSubmission:
 
 
 class Worker:
+    __log = log.getChild("Worker")
+
     def __init__(self, submission_dir: str | Path, working_dir: str | Path = None):
         submission_dir = Path(submission_dir)
         if working_dir is not None:
@@ -325,7 +337,7 @@ class Worker:
         # The session is derived from the metadata checksum,
         # s.t. a change of the metadata file also changes the session
         self.session_dir = self.log_dir / f"metadata-{self.submission.metadata.checksum}"
-        log.info("Session directory: %s", self.session_dir)
+        self.__log.info("Session directory: %s", self.session_dir)
 
         self.progress_file_checksum = self.session_dir / "progress_checksum.json"
         self.progress_file_encrypt = self.session_dir / "progress_encrypt.json"
@@ -374,14 +386,14 @@ class Worker:
                 elif file_info["status"] == "Failed":
                     failed += 1
 
-        log.info(f"Summary for {stage}:")
-        log.info(f"Total files: {total_files}")
-        log.info(f"Checked before: {checked_before}")
-        log.info(f"Checked now: {checked_now}")
-        log.info(f"Failed files: {failed}")
-        log.info(f"Finished files: {finished}")
+        self.__log.info(f"Summary for {stage}:")
+        self.__log.info(f"Total files: {total_files}")
+        self.__log.info(f"Checked before: {checked_before}")
+        self.__log.info(f"Checked now: {checked_now}")
+        self.__log.info(f"Failed files: {failed}")
+        self.__log.info(f"Finished files: {finished}")
 
         if total_files == finished:
-            log.info(f"{stage} - Process Complete")
+            self.__log.info(f"{stage} - Process Complete")
         else:
-            log.warning(f"{stage} - Process Incomplete. Address the errors before proceeding.")
+            self.__log.warning(f"{stage} - Process Incomplete. Address the errors before proceeding.")
