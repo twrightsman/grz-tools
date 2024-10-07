@@ -28,10 +28,10 @@ class SubmissionMetadata:
         """
         self.file_path = metadata_file
         self.content = self._read_metadata(self.file_path)
-        self._checksum = calculate_sha256(self.file_path)
+        self._checksum = calculate_sha256(self.file_path, progress=False)
 
         # Possibly raises exception
-        # self._validate_schema()
+        self._validate_schema()
 
         self._files = None
 
