@@ -27,44 +27,50 @@ from tqdm.auto import tqdm
 log = logging.getLogger(__name__)
 
 
-def calculate_sha256(file_path: str | Path, chunk_size=2 ** 16) -> str:
+def calculate_sha256(file_path: str | Path, chunk_size=2 ** 16, progress=True) -> str:
     '''
     Calculate the sha256 value of a file in chunks
 
-    :param file_path: pathlib.Path()
-    :param chunk_size: int:
-    :rtype: string
+    :param file_path: path to the file
+    :param chunk_size: Chunk size in bytes
+    :param progress: Print progress
     :return: calculated sha256 value of file_path
     '''
     file_path = Path(file_path)
     total_size = getsize(file_path)
     sha256_hash = sha256()
     with open(file_path, 'rb') as f:
-        with tqdm(total=total_size, unit='B', unit_scale=True, desc=f"Calculating SHA256 {file_path.name}") as pbar:
-            for chunk in iter(lambda: f.read(chunk_size), b""):
+        if progress and (total_size > chunk_size):
+            with tqdm(total=total_size, unit='B', unit_scale=True, desc=f"Calculating SHA256 {file_path.name}") as pbar:
+                while chunk := f.read(chunk_size):
+                    sha256_hash.update(chunk)
+                    pbar.update(len(chunk))
+        else:
+            while chunk := f.read(chunk_size):
                 sha256_hash.update(chunk)
-                pbar.update(len(chunk))
     return sha256_hash.hexdigest()
 
 
-def calculate_md5(file_path, chunk_size=2 ** 16) -> str:
+def calculate_md5(file_path, chunk_size=2 ** 16, progress=True) -> str:
     """
     Calculate the md5 value of a file in chunks
 
-    :param file_path: pathlib.Path()
-    :param chunk_size: int:
-    :rtype: string
+    :param file_path: path to the file
+    :param chunk_size: Chunk size in bytes
+    :param progress: Print progress
     :return: calculated md5 value of file_path
     """
     total_size = getsize(file_path)
     md5_hash = md5()
     with open(file_path, "rb") as f:
-        with tqdm(
-                total=total_size, unit="B", unit_scale=True, desc="Calculating MD5"
-        ) as pbar:
-            for chunk in iter(lambda: f.read(chunk_size), b""):
+        if progress and (total_size > chunk_size):
+            with tqdm(total=total_size, unit="B", unit_scale=True, desc="Calculating MD5") as pbar:
+                while chunk := f.read(chunk_size):
+                    md5_hash.update(chunk)
+                    pbar.update(len(chunk))
+        else:
+            while chunk := f.read(chunk_size):
                 md5_hash.update(chunk)
-                pbar.update(len(chunk))
     return md5_hash.hexdigest()
 
 
