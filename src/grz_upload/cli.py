@@ -10,11 +10,10 @@ from pathlib import Path
 from traceback import format_exc
 
 ''' package modules '''
-from grz_upload.file_operations import write_yaml
 from grz_upload.logging_setup import add_filelogger
 from grz_upload.parser import Worker
 
-log = logging.getLogger('ArgumentParser')
+log = logging.getLogger(__name__)
 
 
 @click.group()
@@ -81,6 +80,7 @@ def validate(folderpath: str):
         if worker_inst.write_progress: write_yaml(worker_inst.progress_file_checksum, worker_inst.get_dict_for_report())
         log.info("Shutting Down - Live long and prosper")
         logging.shutdown()
+
 
 @click.command()
 @click.option(
@@ -156,8 +156,8 @@ def encrypt(folderpath, pubkey_grz):
 @click.option(
     "--use_s3cmd",
     metavar="BOOLEAN",
-    is_flag = True
-    )
+    is_flag=True
+)
 def upload(config, folderpath, use_s3cmd):
     """
     Uploads a submission file to s3 using the provided configuration.
@@ -170,8 +170,8 @@ def upload(config, folderpath, use_s3cmd):
 
     options = {
         "config_file": config,
-        "folderpath" : folderpath,
-        "use_s3cmd" : use_s3cmd
+        "folderpath": folderpath,
+        "use_s3cmd": use_s3cmd
     }
 
     log.info("starting upload")

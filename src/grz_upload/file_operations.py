@@ -1,42 +1,35 @@
-"""
-Module: file_operations
-This module provides functions for file operations, including calculating the MD5 value of a file,
-encrypting files using Crypt4GH, and decrypting files.
-Class:
-    - Crypt4GH: A class that provides encryption and decryption functionalities using Crypt4GH.
-Attributes:
-    - Crypt4GH.Key: A type hint for the key used by Crypt4GH.
-    - Crypt4GH.VERSION: The version of Crypt4GH.
-    - Crypt4GH.SEGMENT_SIZE: The size of each segment for encryption.
-    - Crypt4GH.FILE_EXTENSION: The file extension used for encrypted files.
-"""
-import hashlib
+from __future__ import annotations
+
+import os
 import io
+import json
+import logging
 from hashlib import md5, sha256
+from io import BytesIO, StringIO
 from os import urandom
 from os.path import getsize
-import logging
 from pathlib import Path
-from typing import BinaryIO, Dict, TYPE_CHECKING
-from yaml import dump, safe_load, YAMLError
+from typing import BinaryIO, Dict, TextIO, Tuple
 
-
-# import crypt4gh
+from getpass import getpass
+from functools import partial
+import crypt4gh.lib
 import crypt4gh.header
 import crypt4gh.keys
 from nacl.bindings import crypto_aead_chacha20poly1305_ietf_encrypt
 from nacl.public import PrivateKey
 from tqdm.auto import tqdm
+from yaml import dump, safe_load, YAMLError
 
 # if TYPE_CHECKING:
 #     from hashlib import _Hash
 # else:
 #     _Hash = None
 
-log = logging.getLogger("FileOperations")
+log = logging.getLogger(__name__)
 
 
-def calculate_sha256(file_path, chunk_size=2 ** 16):
+def calculate_sha256(file_path: str | Path, chunk_size=2 ** 16) -> str:
     '''
     Calculate the sha256 value of a file in chunks
 
@@ -45,6 +38,7 @@ def calculate_sha256(file_path, chunk_size=2 ** 16):
     :rtype: string
     :return: calculated sha256 value of file_path
     '''
+    file_path = Path(file_path)
     total_size = getsize(file_path)
     sha256_hash = sha256()
     with open(file_path, 'rb') as f:
@@ -55,7 +49,7 @@ def calculate_sha256(file_path, chunk_size=2 ** 16):
     return sha256_hash.hexdigest()
 
 
-def calculate_md5(file_path, chunk_size=2 ** 16):
+def calculate_md5(file_path, chunk_size=2 ** 16) -> str:
     """
     Calculate the md5 value of a file in chunks
 
@@ -75,34 +69,55 @@ def calculate_md5(file_path, chunk_size=2 ** 16):
                 pbar.update(len(chunk))
     return md5_hash.hexdigest()
 
-def read_yaml(filepath: Path) -> Dict:
-    """
-    Method reads in a yaml file.
-    
-    :param filepath: pathlib.Path()
-    :rtype: dict
-    :return: The contens of a yaml file as dictionary
-    """
-    temp_dict = {}
-    with open(filepath, "r", encoding="utf-8") as filein:
-        try:
-            temp_dict = safe_load(filein)
-        except YAMLError:
-            temp_dict = {}
-            for i in format_exc().split("\n"):
-                log.error(i)
-    return temp_dict
 
-def write_yaml(filepath: Path, content : Dict):
+def read_multiple_json(input: TextIO, buffer_size=65536, max_buffer_size=134217728):
+    decoder = json.JSONDecoder()
+    buffer = io.StringIO()  # Use StringIO as the buffer
+
+    while chunk := input.read(buffer_size):
+        if len(buffer.getvalue()) + len(chunk) > max_buffer_size:
+            raise MemoryError("Reached maximum buffer size while reading input")
+
+        # append chunk to buffer
+        buffer.write(chunk)
+
+        while True:
+            try:
+                data = buffer.getvalue().lstrip()
+                # Attempt to decode a JSON object from the current buffer content
+                obj, idx = decoder.raw_decode(data)
+                yield obj  # Process the decoded object
+
+                # Reset the buffer with the unprocessed content
+                buffer = io.StringIO(data[idx:])
+            except json.JSONDecodeError as e:
+                # If a JSONDecodeError occurs, we need more data, so break out to read the next chunk
+                break
+
+    # If there is any remaining content after the loop, try to process it
+    remaining_data = buffer.getvalue().strip()
+    if remaining_data != "":
+        raise ValueError("Remaining data is not empty. Is there invalid JSON?")
+
+
+def is_relative_subdirectory(relative_path: str | Path, root_directory: str | Path) -> bool:
     """
-    Method writes a yaml file.
-    
-    :param filepath: pathlib.Path()
-    :param content: dictionary
+    Check if the target path is a subdirectory of the root path
+    using os.path.commonpath() without checking the file system.
+
+    :param relative_path: The target path.
+    :param root_directory: The root directory.
+    :return: True if relative_path is a subdirectory of root_directory, otherwise False.
     """
-    log.info(f"Data written to: {filepath}")
-    with open(filepath, "w") as fileout:
-        dump(content, fileout, default_flow_style=False)
+    # Convert both paths to absolute paths without resolving symlinks
+    root_directory = os.path.abspath(root_directory)
+    relative_path = os.path.abspath(relative_path)
+
+    common_path = os.path.commonpath([root_directory, relative_path])
+
+    # Check if the common path is equal to the root path
+    return common_path == root_directory
+
 
 class Crypt4GH(object):
     Key = tuple[int, bytes, bytes]
@@ -181,7 +196,7 @@ class Crypt4GH(object):
                 pbar.update(segment_len)
 
     @staticmethod
-    def encrypt_file(input_path, output_path, public_keys):
+    def encrypt_file(input_path, output_path, public_keys: Tuple[Crypt4GH.Key]):
         """
         Encrypt the file, properly handling the Crypt4GH header.
 
@@ -190,27 +205,56 @@ class Crypt4GH(object):
         :param keys: tuple[Key]
         :return: tuple with md5 values for original file, encrypted file
         """
-        with open(input_path, 'rb') as infile, open(output_path, 'wb') as outfile:
+        # TODO: Progress bar?
+        # TODO: store header in separate file?
 
-            # prepare header
-            header_info = Crypt4GH.prepare_header(public_keys)
-            outfile.write(header_info[0])
+        with open(input_path, "rb") as in_fd, open(output_path, "wb") as out_fd:
+            crypt4gh.lib.encrypt(
+                keys=public_keys,
+                infile=in_fd,
+                outfile=out_fd,
+            )
 
-            while True:
-                segment = infile.read(Crypt4GH.SEGMENT_SIZE)  # Read segment directly
-                if not segment:
-                    # End of file
-                    break
+        # with open(input_path, 'rb') as infile, open(output_path, 'wb') as outfile:
+        #
+        #     # prepare header
+        #     header_info = Crypt4GH.prepare_header(public_keys)
+        #     outfile.write(header_info[0])
+        #
+        #     while True:
+        #         segment = infile.read(Crypt4GH.SEGMENT_SIZE)  # Read segment directly
+        #         if not segment:
+        #             # End of file
+        #             break
+        #
+        #         Crypt4GH.encrypt_64k_segment(segment, header_info[1], outfile)
+        #
+        #         if len(segment) < Crypt4GH.SEGMENT_SIZE:
+        #             # End of file
+        #             break
 
-                Crypt4GH.encrypt_64k_segment(segment, header_info[1], outfile)
+    @staticmethod
+    def retrieve_private_key(seckey_path):
+        seckeypath = os.path.expanduser(seckey_path)
+        if not os.path.exists(seckeypath):
+            raise ValueError('Secret key not found')
 
-                if len(segment) < Crypt4GH.SEGMENT_SIZE:
-                    # End of file
-                    break
+        passphrase = os.getenv('C4GH_PASSPHRASE')
+        if passphrase:
+            passphrase_callback = lambda: passphrase
+        else:
+            passphrase_callback = partial(getpass, prompt=f'Passphrase for {seckey_path}: ')
+
+        return crypt4gh.keys.get_private_key(seckeypath, passphrase_callback)
 
     @staticmethod
     def decrypt_file(input_path, output_path, private_key):
-        raise NotImplementedError()
+        with open(input_path, "rb") as in_fd, open(output_path, "wb") as out_fd:
+            crypt4gh.lib.decrypt(
+                keys=private_key,
+                infile=in_fd,
+                outfile=out_fd,
+            )
 
 # class HashLoggingWriter(io.RawIOBase):
 #     def __init__(self, binary_io: io.RawIOBase, hash_algorithm: str = 'sha256'):

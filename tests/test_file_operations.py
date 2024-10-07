@@ -1,10 +1,16 @@
 import io
 from math import ceil
+from typing import Tuple
+
+import pytest
+
+from pathlib import Path
 
 from grz_upload.file_operations import (
     calculate_md5,
     calculate_sha256,
     Crypt4GH,
+    is_relative_subdirectory,
 )
 
 
@@ -30,6 +36,35 @@ def test_prepare_c4gh_keys(temp_crypt4gh_public_key_file: str):
     assert keys[0][0] == 0
     # private key is generated
     assert len(keys[0][1]) == 32
+
+
+@pytest.mark.parametrize("relative_path, root_directory, expected", [
+    # Valid subdirectory paths
+    ("root/directory/subdir/file.txt", "root/directory", True),
+    ("root/directory/subdir", "root/directory", True),
+    ("root/directory/another_subdir/file.txt", "root/directory", True),
+
+    # Target path is exactly the root directory
+    ("root/directory", "root/directory", True),
+
+    # Trying to escape root
+    ("root/directory/../file_outside.txt", "root/directory", False),
+    ("root/directory/../../outside/file.txt", "root/directory", False),
+
+    # Same as root with different formatting
+    ("root/directory/.", "root/directory", True),
+    ("root/directory/./subdir", "root/directory", True),
+
+    # Completely different path
+    ("/some/other/directory/file.txt", "/home/user/projects/root", False),
+    ("other/directory", "root/directory", False),
+])
+def test_is_relative_subdirectory(relative_path, root_directory, expected):
+    """
+    Test the is_relative_subdirectory() function with various cases.
+    """
+    result = is_relative_subdirectory(Path(relative_path), Path(root_directory))
+    assert result == expected
 
 
 def test_Crypt4GH_prepare_header(temp_c4gh_keys: tuple[Crypt4GH.Key]):
@@ -74,7 +109,7 @@ def test_Crypt4GH_encrypt_part(temp_small_input_file: str, temp_c4gh_header: tup
 
 def test_Crypt4GH_encrypt_file(
         temp_small_input_file: str,
-        temp_c4gh_keys: tuple[Crypt4GH.Key],
+        temp_c4gh_keys: Tuple[Crypt4GH.Key],
         temp_crypt4gh_private_key_file,
         tmp_path_factory
 ):
@@ -84,7 +119,9 @@ def test_Crypt4GH_encrypt_file(
     tmp_decrypted_file = tmp_dir / "temp_file"
 
     Crypt4GH.encrypt_file(temp_small_input_file, tmp_encrypted_file, temp_c4gh_keys)
-    Crypt4GH.decrypt_file(tmp_encrypted_file, tmp_decrypted_file, temp_crypt4gh_private_key_file)
+
+    private_key = Crypt4GH.retrieve_private_key(temp_crypt4gh_private_key_file)
+    Crypt4GH.decrypt_file(tmp_encrypted_file, tmp_decrypted_file, [private_key])
 
     import filecmp
 
