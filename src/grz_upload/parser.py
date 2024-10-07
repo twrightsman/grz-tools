@@ -182,6 +182,9 @@ class Submission:
                 expected_checksum = logged_state['expected_checksum']
                 calculated_checksum = logged_state['calculated_checksum']
                 checksum_correct = logged_state['checksum_correct']
+                
+                if calculated_checksum != file_info['expected_checksum']: raise ValueError
+
             except (KeyError, TypeError) as e:
                 if isinstance(e, KeyError):
                     self.__log.error("Invalid state: %s; Recalculating...", logged_state)
@@ -192,18 +195,42 @@ class Submission:
                 expected_checksum = file_info['expected_checksum']
                 calculated_checksum = calculate_sha256(file_path)
                 checksum_correct = calculated_checksum == expected_checksum
+                
+                error_msg = f"Checksum mismatch for {file_path.name}! Expected: {expected_checksum}, calculated: {calculated_checksum}"
 
                 progress_logger.set_state(file_path, {
                     "expected_checksum": expected_checksum,
                     "calculated_checksum": calculated_checksum,
                     "checksum_correct": checksum_correct,
                 })
+            except ValueError as e:
+                self.__log.error("Invalid state for %s! Checksum inconsistency!", file_path)
+                
+                new_calculated_checksum = calculate_sha256(file_path)
+
+                if new_calculated_checksum == file_info['expected_checksum']:
+                    self.__log.warning("File %s has been updated in comparison to previous validation and expected and calculated checksum matches (previous: %s, expected: %s, calculated new: %s", file_path, calculated_checksum, file_info['expected_checksum'], new_calculated_checksum)
+                    checksum_correct = True
+                    progress_logger.set_state(file_path, {
+                    "expected_checksum": file_info['expected_checksum'],
+                    "calculated_checksum": new_calculated_checksum,
+                    "checksum_correct": checksum_correct,
+                    })
+                else:
+                    checksum_correct = False
+                    error_msg = f"File {file_path} has been updated in comparison to previous validation but expected and calculated checksum does not match (previous: {calculated_checksum}, expected: {file_info['expected_checksum']}, calculated new: {new_calculated_checksum}"
+                
+                    progress_logger.set_state(file_path, {
+                    "expected_checksum": expected_checksum,
+                    "calculated_checksum": calculated_checksum,
+                    "checksum_correct": checksum_correct,
+                    })
 
             if checksum_correct:
                 self.__log.info(f"Checksum validated for {file_path.name}.")
             else:
                 self.__log.error(
-                    f"Checksum mismatch for {file_path.name}! Expected: {expected_checksum}, calculated: {calculated_checksum}"
+                    error_msg
                 )
                 all_checksums_correct = False
 
@@ -335,10 +362,12 @@ class Worker:
         )
         self.encrypted_files_dir = working_dir / "encrypted_files"
         self.log_dir = working_dir / "logs"
+        if not self.log_dir.is_dir(): self.log_dir.mkdir(mode = 0o770, parents = True, exist_ok = True)
 
         # The session is derived from the metadata checksum,
         # s.t. a change of the metadata file also changes the session
-        self.session_dir = self.log_dir / f"metadata-{self.submission.metadata.checksum}"
+        self.session_dir = self.log_dir # / f"metadata-{self.submission.metadata.checksum}"
+        self.session_dir.mkdir(mode = 0o770, parents = True, exist_ok = True)
         self.__log.info("Session directory: %s", self.session_dir)
 
         self.progress_file_checksum = self.session_dir / "progress_checksum.json"
