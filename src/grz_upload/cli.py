@@ -70,14 +70,14 @@ def validate(folderpath: str):
     try:
         folderpath = Path(folderpath)
         worker_inst = Worker(folderpath)
-        worker_inst.validate_checksum()
+        worker_inst.validate()
         worker_inst.show_summary("SHA256 checksum validation")
 
     except (KeyboardInterrupt, Exception) as e:
         log.error(format_exc())
 
     finally:
-        if worker_inst.write_progress: write_yaml(worker_inst.progress_file_checksum, worker_inst.get_dict_for_report())
+        # if worker_inst.write_progress: write_yaml(worker_inst.progress_file_checksum, worker_inst.get_dict_for_report())
         log.info("Shutting Down - Live long and prosper")
         logging.shutdown()
 

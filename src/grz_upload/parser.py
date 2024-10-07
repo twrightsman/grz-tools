@@ -31,7 +31,7 @@ class SubmissionMetadata:
         self._checksum = calculate_sha256(self.file_path)
 
         # Possibly raises exception
-        self._validate_schema()
+        # self._validate_schema()
 
         self._files = None
 
@@ -76,29 +76,31 @@ class SubmissionMetadata:
             return self._files
 
         submission_files = {}
-        for donor in self.content.get("Donors", []):
-            for lab_data in donor.get("LabData", []):
-                for sequence_data in lab_data.get("SequenceData", []):
+        for donor in self.content.get("donors", []):
+            for lab_data in donor.get("labData", []):
+                for sequence_data in lab_data.get("sequenceData", []):
                     for file_data in sequence_data.get("files", []):
-                        relative_file_path = file_data["filepath"]
+                        relative_file_path = file_data["filePath"]
 
                         file_info = {
                             'valid': False,
                             'expected_checksum': file_data["fileChecksum"]
                         }
-                        submission_files[relative_file_path] = file_info
 
                         # check if file path is actually relative to the submission files directory
                         if not is_relative_subdirectory(relative_file_path, "./"):
                             file_info["invalid_reason"] = f"Path is not relative"
+                            submission_files[relative_file_path] = file_info
                             continue
 
                         # check if file is already linked
                         if relative_file_path in submission_files:
                             file_info["invalid_reason"] = "Duplicate filename in metadata"
+                            submission_files[relative_file_path] = file_info
                             continue
 
                         file_info["valid"] = True
+                        submission_files[relative_file_path] = file_info
 
         self._files = submission_files
         return submission_files
@@ -108,7 +110,7 @@ class SubmissionMetadata:
         all_valid = True
         for file_path, file_info in self.files.items():
             if not file_info["valid"]:
-                self.__log.error("%s: %s", file_path.name, file_info["invalid_reason"])
+                self.__log.error("%s: %s", file_path, file_info["invalid_reason"])
 
                 all_valid = False
 
