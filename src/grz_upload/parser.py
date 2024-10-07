@@ -327,9 +327,9 @@ class Worker:
         self.session_dir = self.log_dir / f"metadata-{self.submission.metadata.checksum}"
         log.info("Session directory: %s", self.session_dir)
 
-        self.progress_file_checksum = self.session_dir / "progress_checksum.csv"
-        self.progress_file_encrypt = self.session_dir / "progress_encrypt.csv"
-        self.progress_file_upload = self.session_dir / "progress_upload.csv"
+        self.progress_file_checksum = self.session_dir / "progress_checksum.json"
+        self.progress_file_encrypt = self.session_dir / "progress_encrypt.json"
+        self.progress_file_upload = self.session_dir / "progress_upload.json"
 
     def validate(self):
         """
