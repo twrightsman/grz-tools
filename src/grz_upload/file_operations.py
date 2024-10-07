@@ -1,21 +1,19 @@
 from __future__ import annotations
 
+import hashlib
 import io
 import json
 import logging
 import os
 from functools import partial
 from getpass import getpass
-from hashlib import md5, sha256
-from os import urandom
 from os.path import getsize
 from pathlib import Path
-from typing import BinaryIO, TextIO, Tuple
+from typing import TextIO, Tuple
 
 import crypt4gh.header
 import crypt4gh.keys
 import crypt4gh.lib
-from nacl.bindings import crypto_aead_chacha20poly1305_ietf_encrypt
 from nacl.public import PrivateKey
 from tqdm.auto import tqdm
 
@@ -38,7 +36,7 @@ def calculate_sha256(file_path: str | Path, chunk_size=2 ** 16, progress=True) -
     '''
     file_path = Path(file_path)
     total_size = getsize(file_path)
-    sha256_hash = sha256()
+    sha256_hash = hashlib.sha256()
     with open(file_path, 'rb') as f:
         if progress and (total_size > chunk_size):
             with tqdm(total=total_size, unit='B', unit_scale=True, desc=f"Calculating SHA256 {file_path.name}") as pbar:
@@ -61,7 +59,7 @@ def calculate_md5(file_path, chunk_size=2 ** 16, progress=True) -> str:
     :return: calculated md5 value of file_path
     """
     total_size = getsize(file_path)
-    md5_hash = md5()
+    md5_hash = hashlib.md5()
     with open(file_path, "rb") as f:
         if progress and (total_size > chunk_size):
             with tqdm(total=total_size, unit="B", unit_scale=True, desc="Calculating MD5") as pbar:
@@ -143,61 +141,7 @@ class Crypt4GH(object):
         return keys
 
     @staticmethod
-    def prepare_header(keys: tuple[Key]) -> tuple[bytes, bytes, tuple[Key]]:
-        """Prepare header separately to be able to use multiupload"""
-        encryption_method = 0  # only choice for this version
-        session_key = urandom(32)  # we use one session key for all blocks
-        # Output the header
-        header_content = crypt4gh.header.make_packet_data_enc(
-            encryption_method, session_key
-        )
-        header_packets = crypt4gh.header.encrypt(header_content, keys)
-        header_bytes = crypt4gh.header.serialize(header_packets)
-        return (header_bytes, session_key, keys)
-
-    @staticmethod
-    def encrypt_64k_segment(data: bytes, session_key: bytes, buffer: BinaryIO):
-        """
-        Encrypt 64kb block of data with crypt4gh
-
-        :param data: 64kb block of data to encrypt
-        :param session_key: The session key with which the data is to be encrypted
-        :param buffer: Encrypted data will be written to this buffer
-        """
-        nonce = urandom(12)
-        encrypted_data = crypto_aead_chacha20poly1305_ietf_encrypt(
-            data, None, nonce, session_key
-        )
-        buffer.write(nonce)
-        buffer.write(encrypted_data)
-
-    @staticmethod
-    def encrypt_part(data: bytes, session_key: bytes, buffer: BinaryIO):
-        """
-        Encrypt data of arbitrary size with crypt4gh
-
-        :param data: the data to encrypt
-        :param session_key: The session key with which the data is to be encrypted
-        :param buffer: Encrypted data will be written to this buffer
-        """
-        data_size = len(data)
-        position = 0
-        with tqdm(total=data_size, unit="B", unit_scale=True, desc="Encrypting") as pbar:
-            while True:
-                # Determine how much data to read
-                segment_len = min(Crypt4GH.SEGMENT_SIZE, data_size - position)
-                if segment_len == 0:  # No more data to read
-                    break
-                # Read the segment from the byte string
-                data_block = data[position: position + segment_len]
-                # Update the position
-                position += segment_len
-                # Process the data in `segment`
-                Crypt4GH.encrypt_64k_segment(data_block, session_key, buffer)
-                pbar.update(segment_len)
-
-    @staticmethod
-    def encrypt_file(input_path, output_path, public_keys: Tuple[Crypt4GH.Key]):
+    def encrypt_file(input_path: str | Path, output_path: str | Path, public_keys: Tuple[Crypt4GH.Key]):
         """
         Encrypt the file, properly handling the Crypt4GH header.
 
@@ -208,31 +152,24 @@ class Crypt4GH(object):
         """
         # TODO: Progress bar?
         # TODO: store header in separate file?
+        input_path = Path(input_path)
+        output_path = Path(output_path)
 
+        total_size = getsize(input_path)
         with open(input_path, "rb") as in_fd, open(output_path, "wb") as out_fd:
-            crypt4gh.lib.encrypt(
-                keys=public_keys,
-                infile=in_fd,
-                outfile=out_fd,
-            )
-
-        # with open(input_path, 'rb') as infile, open(output_path, 'wb') as outfile:
-        #
-        #     # prepare header
-        #     header_info = Crypt4GH.prepare_header(public_keys)
-        #     outfile.write(header_info[0])
-        #
-        #     while True:
-        #         segment = infile.read(Crypt4GH.SEGMENT_SIZE)  # Read segment directly
-        #         if not segment:
-        #             # End of file
-        #             break
-        #
-        #         Crypt4GH.encrypt_64k_segment(segment, header_info[1], outfile)
-        #
-        #         if len(segment) < Crypt4GH.SEGMENT_SIZE:
-        #             # End of file
-        #             break
+            with TqdmIOWrapper(in_fd, tqdm(
+                    total=total_size,
+                    desc=f"Encrypting: '{input_path.name}'",
+                    unit="B",
+                    unit_scale=True,
+                    # unit_divisor=1024,  # make use of standard units e.g. KB, MB, etc.
+                    miniters=1,
+            )) as pbar_in_fd:
+                crypt4gh.lib.encrypt(
+                    keys=public_keys,
+                    infile=pbar_in_fd,
+                    outfile=out_fd,
+                )
 
     @staticmethod
     def retrieve_private_key(seckey_path):
@@ -250,12 +187,83 @@ class Crypt4GH(object):
 
     @staticmethod
     def decrypt_file(input_path, output_path, private_key):
+        total_size = getsize(input_path)
         with open(input_path, "rb") as in_fd, open(output_path, "wb") as out_fd:
-            crypt4gh.lib.decrypt(
-                keys=private_key,
-                infile=in_fd,
-                outfile=out_fd,
-            )
+            with TqdmIOWrapper(in_fd, tqdm(
+                    total=total_size,
+                    desc=f"Decrypting: '{input_path.name}'",
+                    unit="B",
+                    unit_scale=True,
+                    # unit_divisor=1024,  # make use of standard units e.g. KB, MB, etc.
+                    miniters=1,
+            )) as pbar_in_fd:
+                crypt4gh.lib.decrypt(
+                    keys=private_key,
+                    infile=pbar_in_fd,
+                    outfile=out_fd,
+                )
+
+
+class TqdmIOWrapper(io.RawIOBase):
+    """
+    Wrapper to record reads and writes in a tqdm progress bar.
+
+    Example:
+        very_long_input = io.StringIO("0123456789abcdef" * 100000)
+        total_size = len(very_long_input.getvalue())
+
+        batch_size = 10 ** 4  # 10kb
+        with open("/dev/null", "w") as fd:
+            with TqdmIOWrapper(fd, tqdm(
+                    total=total_size,
+                    desc="Printing: ",
+                    unit="B",
+                    unit_scale=True,
+                    # unit_divisor=1024,  # make use of standard units e.g. KB, MB, etc.
+                    miniters=1,
+            )) as pbar_fd:
+                while chunk := very_long_input.read(batch_size):
+                    pbar_fd.write(chunk)
+
+                    time.sleep(0.1)
+    """
+
+    def __init__(self, io_buf: io.RawIOBase, progress_bar):
+        """
+
+        :param io_buf: the buffer to wrap
+        :param progress_bar: tqdm progress bar
+        """
+        self.io_buf = io_buf
+        self.callback = progress_bar.update
+
+    def write(self, data):
+        nbytes_written = self.io_buf.write(data)
+        if nbytes_written:
+            self.callback(nbytes_written)
+        return nbytes_written
+
+    def read(self, size=-1) -> bytes:
+        data = self.io_buf.read(size)
+        if data:
+            self.callback(len(data))
+
+        return data
+
+    def readinto(self, buffer, /):
+        nbytes_written = self.io_buf.readinto(buffer)
+        if nbytes_written:
+            self.callback(nbytes_written)
+
+        return nbytes_written
+
+    def flush(self):
+        # Ensure all data is flushed to the underlying binary IO object
+        self.io_buf.flush()
+
+    def close(self):
+        # Close the underlying binary IO object
+        self.io_buf.close()
 
 # class HashLoggingWriter(io.RawIOBase):
 #     def __init__(self, binary_io: io.RawIOBase, hash_algorithm: str = 'sha256'):
@@ -287,6 +295,6 @@ class Crypt4GH(object):
 #         # Close the underlying binary IO object
 #         self._binary_io.close()
 #
-#     def get_hash(self) -> _Hash:
+#     def get_hash(self):
 #         # Return the hex digest of the hash
 #         return self.hash_obj

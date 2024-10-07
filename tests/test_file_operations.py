@@ -1,10 +1,7 @@
-import io
-from math import ceil
+from pathlib import Path
 from typing import Tuple
 
 import pytest
-
-from pathlib import Path
 
 from grz_upload.file_operations import (
     calculate_md5,
@@ -67,46 +64,6 @@ def test_is_relative_subdirectory(relative_path, root_directory, expected):
     assert result == expected
 
 
-def test_Crypt4GH_prepare_header(temp_c4gh_keys: tuple[Crypt4GH.Key]):
-    header_pack = Crypt4GH.prepare_header(temp_c4gh_keys)
-    assert len(header_pack) == 3
-    # assert header size
-    assert len(header_pack[0]) == 124
-    # size of session key
-    assert len(header_pack[1]) == 32
-    # pass back the c4gh keys
-    assert header_pack[2] == temp_c4gh_keys
-
-
-def test_Crypt4GH_encrypt_segment(temp_c4gh_header: tuple[bytes, bytes, tuple[Crypt4GH.Key]]):
-    data = b"test segment content"
-    key = temp_c4gh_header[1]
-    buffer = io.BytesIO()
-
-    Crypt4GH.encrypt_64k_segment(data, key, buffer=buffer)
-    encrypted_data = buffer.getvalue()
-
-    assert isinstance(encrypted_data, bytes)
-    # size is larger by 12 nonce and 16 mac(?)
-    assert len(encrypted_data) == len(data) + 12 + 16
-
-
-def test_Crypt4GH_encrypt_part(temp_small_input_file: str, temp_c4gh_header: tuple[bytes, bytes, tuple[Crypt4GH.Key]]):
-    with open(temp_small_input_file, 'rb') as infile:
-        byte_string = infile.read()
-        session_key = temp_c4gh_header[1]
-        buffer = io.BytesIO()
-
-        Crypt4GH.encrypt_part(byte_string, session_key, buffer=buffer)
-        encrypted_part = buffer.getvalue()
-
-    file_size = len(byte_string)
-    segment_no = ceil(file_size / Crypt4GH.SEGMENT_SIZE)
-    expected_encrypted_part_size = file_size + segment_no * (12 + 16)
-
-    assert expected_encrypted_part_size == len(encrypted_part)
-
-
 def test_Crypt4GH_encrypt_file(
         temp_small_input_file: str,
         temp_c4gh_keys: Tuple[Crypt4GH.Key],
@@ -121,8 +78,13 @@ def test_Crypt4GH_encrypt_file(
     Crypt4GH.encrypt_file(temp_small_input_file, tmp_encrypted_file, temp_c4gh_keys)
 
     private_key = Crypt4GH.retrieve_private_key(temp_crypt4gh_private_key_file)
-    Crypt4GH.decrypt_file(tmp_encrypted_file, tmp_decrypted_file, [private_key])
+
+    Crypt4GH.decrypt_file(
+        tmp_encrypted_file,
+        tmp_decrypted_file,
+        private_key=[(0, private_key, None)]  # list of (method, privkey, recipient_pubkey=None)
+    )
 
     import filecmp
 
-    assert filecmp.cmp(tmp_encrypted_file, tmp_decrypted_file)
+    assert filecmp.cmp(temp_small_input_file, tmp_decrypted_file)
