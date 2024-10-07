@@ -2,7 +2,7 @@ import boto3
 import yaml
 from moto import mock_aws
 
-from grz_upload.upload import S3UploadWorker
+from grz_upload.upload import S3BotoUploadWorker
 
 
 def create_bucket(bucket_name, config):
@@ -38,7 +38,7 @@ def test_upload(
     create_bucket(bucket_name, config)
 
     # create upload worker
-    upload_worker = S3UploadWorker(
+    upload_worker = S3BotoUploadWorker(
         s3_dict=config,
         status_file_path=None,
         pubkey_grz_file=temp_crypt4gh_public_key_file

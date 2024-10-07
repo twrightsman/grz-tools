@@ -1,9 +1,8 @@
-import io
+import abc
 import logging
-from subprocess import Popen, PIPE
-from csv import DictWriter
 from hashlib import sha256
 from os.path import getsize
+from subprocess import Popen, PIPE
 from traceback import format_exc
 from typing import Dict
 
@@ -11,12 +10,19 @@ import boto3
 from boto3 import client as boto3_client
 from tqdm.auto import tqdm
 
-from grz_upload.file_operations import Crypt4GH
+from grz_upload.parser import EncryptedSubmission
 
 log = logging.getLogger(__name__)
 
 
-class S3UploadWorker(object):
+class UploadWorker(abc.ABCMeta):
+
+    @abc.abstractmethod
+    def upload(encrypted_submission: EncryptedSubmission):
+        raise NotImplementedError()
+
+
+class S3BotoUploadWorker(UploadWorker):
     CSV_HEADER = [
         "file_id",
         "file_location",
@@ -37,7 +43,6 @@ class S3UploadWorker(object):
         :param pubkey_grz_file: public key file of the GRZ
         :param status_file_path: optional file for storing upload state. Can be used for e.g. resumable uploads.
         """
-
         self._status_file_path = status_file_path
         self.__s3_dict = s3_dict
         # self.__pubkey_grz_file = pubkey_grz_file
@@ -56,8 +61,6 @@ class S3UploadWorker(object):
             aws_access_key_id=self.__s3_dict["s3_access_key"],
             aws_secret_access_key=self.__s3_dict["s3_secret"],
         )
-
-
 
     def show_information(self):
         log.info(f"total files in metafile: {self.__file_total}")
@@ -95,7 +98,7 @@ class S3UploadWorker(object):
 
             with open(local_file, "rb") as infile:
                 # Process the file in chunks
-                while chunk := infile.read(S3UploadWorker.MULTIPART_CHUNK_SIZE):
+                while chunk := infile.read(S3BotoUploadWorker.MULTIPART_CHUNK_SIZE):
                     original_sha256.update(chunk)
                     # Upload each chunk
                     part = self.__s3_client.upload_part(
@@ -182,7 +185,7 @@ class S3UploadWorker(object):
 
             # Get the file size to decide whether to use multipart upload
             file_size = getsize(local_file_path)
-            if file_size > S3UploadWorker.MAX_SINGLEPART_UPLOAD_SIZE:
+            if file_size > S3BotoUploadWorker.MAX_SINGLEPART_UPLOAD_SIZE:
                 # do multipart upload
                 sha256sums = self._encrypt_and_multipart_upload(
                     local_file_path, s3_object_id
@@ -200,7 +203,7 @@ class S3UploadWorker(object):
 
             # Get the file size to decide whether to use multipart upload
             file_size = getsize(local_file_path)
-            if file_size > S3UploadWorker.MAX_SINGLEPART_UPLOAD_SIZE:
+            if file_size > S3BotoUploadWorker.MAX_SINGLEPART_UPLOAD_SIZE:
                 # do multipart upload
                 sha256sums = self._multipart_upload(local_file_path, s3_object_id)
             else:
