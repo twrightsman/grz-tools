@@ -71,7 +71,7 @@ def validate(folderpath: str):
         folderpath = Path(folderpath)
         worker_inst = Worker(folderpath)
         worker_inst.validate()
-        worker_inst.show_summary("SHA256 checksum validation")
+        worker_inst.show_summary("validate")
 
     except (KeyboardInterrupt, Exception) as e:
         log.error(format_exc())
