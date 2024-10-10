@@ -16,7 +16,12 @@ from grz_upload.parser import Worker
 log = logging.getLogger(__name__)
 
 
-@click.group()
+class OrderedGroup(click.Group):
+    def list_commands(self, ctx):
+        # Return commands in the order they were added
+        return list(self.commands.keys())
+
+@click.group(cls = OrderedGroup)
 @click.version_option(version="0.1", prog_name="grz_upload")
 @click.option("--log-file", metavar="FILE", type=str, help="Path to log file")
 @click.option(
@@ -71,7 +76,6 @@ def validate(folderpath: str):
         folderpath = Path(folderpath)
         worker_inst = Worker(folderpath)
         worker_inst.validate()
-        worker_inst.show_summary("validate")
 
     except (KeyboardInterrupt, Exception) as e:
         log.error(format_exc())
