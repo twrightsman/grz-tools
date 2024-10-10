@@ -15,9 +15,11 @@ authors = [
 ]
 dependencies = [
     "boto3",
+    "click",
     "crypt4gh",
+    "jsonschema",
     "pyyaml",
-    "click"
+    "tqdm"
 ]
 classifiers = [
     "Programming Language :: Python :: 3",
