@@ -140,13 +140,16 @@ class Submission:
         self.files_dir = Path(files_dir)
 
         self.metadata = SubmissionMetadata(self.metadata_dir / "metadata.json")
-        self.__file_stat = defaultdict(int)
+        self.__progress_stat = defaultdict(list)
 
     def get_stats(self) -> Dict:
-        return self.__file_stat
+        return self.__progress_stat
 
     @property
     def files(self):
+        """
+        Dictionary with file path as key, file information as value
+        """
         retval = {}
         for file_path, file_info in self.metadata.files.items():
             absolute_file_path = self.files_dir / file_path
@@ -166,69 +169,55 @@ class Submission:
         # - "expected_checksum": str
         # - "calculated_checksum": str
         # - "checksum_correct": bool
-        previous_processed = progress_logger.get_count_file_states() # number of files which have been previously checked
+        fail_list = []
         self.__log.info('Starting checksum validation.')
-
         all_checksums_correct = True
-        
+        progress_logger.cleanup(keep = [(i, self.files[i]["expected_checksum"]) for i in self.files]) # loescht Datei, ueberschreibt sie in set_state
         for file_path, file_info in self.files.items():
-            self.__file_stat['total'] += 1
+            self.__progress_stat['total'].append(file_path)
             # check if file is actually a file, and skip if not
             if not file_path.is_file():
                 all_checksums_correct = False
                 self.__log.error("Path is not a file: %s", file_path.name)
-                self.__file_stat['file_not_found'] += 1 # status logs
-                self.__file_stat['failed'] += 1 # status lobs
+                self.__progress_stat['file_not_found'].append(file_path)
                 continue
-
+            
             # return is either None or a dictionary. None means, the file has not been tracked before
-            logged_state = progress_logger.get_state(file_path)
-            if logged_state is None: logged_state = copy.deepcopy(FileProgressLogger.CHECKSUM_DICT) # get_state returns by default either a dictionary or None; the previously written try except FileNotFoundError would have never been raised
+            logged_state = progress_logger.get_state(file_path, file_info["expected_checksum"])
+            expected_checksum = file_info["expected_checksum"]
+            if logged_state is None:
+                self.__log.warning("File %s has not been processing before.", file_path)
+                logged_state = copy.deepcopy(FileProgressLogger.CHECKSUM_DICT) # get_state returns by default either a dictionary or None; the previously written try except FileNotFoundError would have never been raised
 
             if logged_state["status"] == "fresh":
                 # new file, so process everything
-                self.__file_stat['new'] += 1
-                if previous_processed != 0:
-                    self.__log.warning("Folder has been processed before, File %s has been added after initial processing and checksum not calculated yet", file_path)
-                else:
-                    self.__file_stat['old'] += 1
-                    self.__log.debug("Folder has not been processed before, File %s is fresh and checksum not calculated yet", file_path)
+                # self.__progress_stat['new'] += 1
+                # if previous_processed != 0:
+                #     self.__log.warning("Folder has been processed before, File %s has been added after initial processing and checksum not calculated yet", file_path)
+                # else:
+                #     self.__progress_stat['old'] += 1
+                #     self.__log.debug("Folder has not been processed before, File %s is fresh and checksum not calculated yet", file_path)
 
                 calculated_checksum = calculate_sha256(file_path)
-                expected_checksum = file_info["expected_checksum"]
                 checksum_correct = expected_checksum == calculated_checksum
-                logged_state["modification_time"] = file_path.stat().st_mtime # track this for additional checks, in case the LE changed the file, run the script again
-                logged_state["size"] = file_path.stat().st_size # track this for additional checks, in case the LE changed the file, run the script again
-                logged_state["write_back"] = True # tracks if a file is going to be added to the progress file
                 logged_state["checksum_correct"] = checksum_correct
-                
                 if checksum_correct:
                     logged_state["calculated_checksum"] = calculated_checksum
-                    logged_state["expected_checksum"] = expected_checksum
                     logged_state["status"] = "processed"
-                    self.__file_stat['processed'] += 1
+                    self.__progress_stat['processed'].append(file_path)
                 else:
-                    logged_state["status"] = "failed"
                     logged_state["calculated_checksum"] = ""
-                    logged_state["expected_checksum"] = ""
-                    self.__file_stat['failed'] += 1
+                    logged_state["status"] = "failed"
+                    self.__progress_stat['failed'].append(file_path)
             elif logged_state["status"] in ("processed", "failed"): # checks for previously processed files
-                self.__file_stat['old'] += 1
                 redo = False
                 if logged_state["calculated_checksum"] != file_info['expected_checksum']:
                     self.__log.warning("File %s has been processed before, previously recorded checksum does not match, recalculating ... ", file_path)
-                    redo = True
-                elif logged_state["modification_time"] != file_path.stat().st_mtime:
-                    self.__log.warning("File %s has been processed before, previously recorded file modification time has changed, recalculating ... ", file_path)
-                    redo = True
-                elif logged_state["size"] != file_path.stat().st_size:
-                    self.__log.warning("File %s has been processed before, previously recorded file size has changed, recalculating ... ", file_path)
                     redo = True
                 else:
                     self.__log.debug("File %s has been processed before, looks okay ... ", file_path)
                     checksum_correct = True
 
-                logged_state["write_back"] = True
                 if redo:
                     calculated_checksum = calculate_sha256(file_path)
                     expected_checksum = file_info["expected_checksum"]
@@ -237,39 +226,37 @@ class Submission:
 
                     if checksum_correct:
                         logged_state["calculated_checksum"] = calculated_checksum
-                        logged_state["expected_checksum"] = expected_checksum
-                        logged_state["modification_time"] = file_path.stat().st_mtime
-                        logged_state["size"] = file_path.stat().st_size
                         logged_state["status"] = "processed"
-                        self.__file_stat['processed'] += 1
+                        self.__progress_stat['processed'].append(file_path)
                     else:
                         logged_state["status"] = "failed"
-                        self.__file_stat['failed'] += 1
-
+                        self.__progress_stat['failed'].append(file_path)
                 else:
                     logged_state["status"] = "processed"
-                    self.__file_stat['processed'] += 1
+                    self.__progress_stat['processed'].append(file_path)
 
             if checksum_correct:
-                progress_logger.set_state(file_path, logged_state)
+                progress_logger.set_state(file_path, expected_checksum, logged_state)
                 self.__log.info(f"Checksum validated for {file_path.name}.")
             else:
                 self.__log.error(f"Checksum validation for {file_path} failed. Expected checksum: {expected_checksum}, calculated: {calculated_checksum}")
-                progress_logger.set_state(file_path, logged_state)
+                progress_logger.set_state(file_path, expected_checksum, logged_state)
+                fail_list.append(file_path)
                 all_checksums_correct = False
+
+        # files_not_written = progress_logger.get_files_not_written()
+        # if len(files_not_written) != 0:
+        #     self.__progress_stat['ignored'] += len(files_not_written)
+        #     self.__log.info("The following files were not listed in the current metadata file but in the previous one. They are being removed from a next possible check:")
+        #     for i in files_not_written: self.__log.info(i)
 
         if all_checksums_correct:
             self.__log.info('Checksum validation completed without errors.')
         else:
-            self.__log.error("Checksum validation failed.")
-            # TODO: print summary of failed files
-            # raise SubmissionValidationError("Submission validation failed. Check log file for details.")
-        
-        files_not_written = progress_logger.get_files_not_written()
-        if len(files_not_written) != 0:
-            self.__file_stat['ignored'] += len(files_not_written)
-            self.__log.info("The following files were not listed in the current metadata file but in the previous one. They are being removed from a next possible check:")
-            for i in files_not_written: self.__log.info(i) 
+            self.__log.error("Checksum validation failed. See erros above for the following files:")
+            for i in self.__progress_stat["file_not_found"]: self.__log.error("File not found: %s", i)
+            for i in self.__progress_stat["failed"]: self.__log.error("Checksum invalid: %s", i)
+            raise SubmissionValidationError("Submission validation failed. Check log file for details.")
 
     def encrypt(
             self,
