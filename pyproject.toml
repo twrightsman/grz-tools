@@ -31,7 +31,7 @@ keywords = ["encryption", "S3", "checksum", "upload"]
 "Homepage" = "https://github.com/ghga-de/grz_upload"
 
 [project.scripts]
-encrypt-upload = "grz_upload.encrypt_upload:main"
+grz-cli = "grz_upload.cli:cli"
 
 [project.optional-dependencies]
 dev = [

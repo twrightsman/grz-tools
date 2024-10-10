@@ -49,7 +49,7 @@ def cli(log_file: str = None, log_level: str = "INFO"):
     logging.getLogger(__name__).info("Logging setup complete.")
 
 
-@click.command()
+@cli.command()
 @click.option(
     "-f",
     "--folderpath",
@@ -82,7 +82,7 @@ def validate(folderpath: str):
         logging.shutdown()
 
 
-@click.command()
+@cli.command()
 @click.option(
     "-f",
     "--folderpath",
@@ -129,7 +129,7 @@ def encrypt(folderpath, pubkey_grz):
         logging.shutdown()
 
 
-@click.command()
+@cli.command()
 @click.option(
     "-c",
     "--config",
