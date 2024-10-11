@@ -190,7 +190,4 @@ def upload(config, folderpath, use_s3cmd):
 
 
 if __name__ == "__main__":
-    cli.add_command(validate)
-    cli.add_command(encrypt)
-    cli.add_command(upload)
     cli()
