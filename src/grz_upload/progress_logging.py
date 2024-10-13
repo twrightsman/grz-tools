@@ -6,6 +6,7 @@ from pathlib import Path
 import copy
 
 from grz_upload.file_operations import read_multiple_json
+import grz_upload.parser as parser
 
 
 class FileProgressLogger:
@@ -16,11 +17,11 @@ class FileProgressLogger:
 
     _index = {
         "file_path": str,
-        "expected_checksum": str,
         "modification_time": float,
         "size": int
     }
-    _file_states: Dict[Tuple[str, str, float, int], Dict | List]
+    # mapping of index -> (metadata, data)
+    _file_states: Dict[Tuple[str, float, int], Tuple[Dict, Dict | List]]
 
     def __init__(self, log_file_path: str | Path):
         """
@@ -47,37 +48,41 @@ class FileProgressLogger:
                     for row_dict in read_multiple_json(fd):
                         # Get index and cast them to the correct types
                         index = tuple(self._index[k](row_dict[k]) for k in self._index.keys())
-                        # Get state and cast them to the correct types
-                        state = {k: v for k, v in row_dict.items() if k not in self._index.keys()}
+                        # Get metadata
+                        metadata = row_dict["metadata"]
+                        # Get state
+                        state = row_dict["state"]
 
-                        self._file_states[index] = state
+                        self._file_states[index] = (metadata, state)
             else:
-                raise ValueError(f"Path is not a file: '{self._file_path.name}'")
+                raise ValueError(f"Path is not a file: '{str(self._file_path)}'")
 
-    def cleanup(self, keep: list):
+    def cleanup(self, keep: List[Tuple[str | Path, Dict | parser.SubmissionFileMetadata]]):
         self._file_path.unlink(missing_ok=True)
-        for file, expected_checksum in keep:
-            state = self.get_state(file, expected_checksum)
+        for file, file_metadata in keep:
+            state = self.get_state(file, file_metadata)
             if state is not None:
-                self.set_state(file, expected_checksum, self.get_state(file, expected_checksum))
+                self.set_state(file, file_metadata, self.get_state(file, file_metadata))
 
-    # ML: use full path as key
-    def _get_index(self, file_path: Path, expected_checksum: str) -> Tuple:
+    def _get_index(self, file_path: str | Path) -> Tuple[str, float, int]:
         """
         Generates a unique index for a given file based on its name and modification time.
 
         :param file_path: Path object representing the file.
         :return: A tuple containing the file name and modification time.
         """
+        file_path = Path(file_path).resolve()
+
         if file_path.is_file():
-            return str(file_path), expected_checksum, file_path.stat().st_mtime, file_path.stat().st_size
+            return str(file_path), file_path.stat().st_mtime, file_path.stat().st_size
         else:
-            return str(file_path), expected_checksum, 0, 0  # catches files that do not exist
 
-    def get_index(self, file_path: Path, expected_checksum: str) -> Tuple:
-        return self._get_index(file_path, expected_checksum)
+            return str(file_path), -1, -1  # catches files that do not exist
 
-    def get_state(self, file_path: str | Path, expected_checksum: str) -> Dict | None:
+    # def get_index(self, file_path: Path, file_metadata: Dict) -> Tuple:
+    #     return self._get_index(file_path, file_metadata)
+
+    def get_state(self, file_path: str | Path, file_metadata: Dict | parser.SubmissionFileMetadata) -> Dict | None:
         """
         Retrieves the stored state of a file if it exists in the log.
 
@@ -85,22 +90,43 @@ class FileProgressLogger:
         :return: A dictionary representing the file's state, or None if the file's state isn't logged.
         """
         file_path = Path(file_path)
-        index = self._get_index(file_path, expected_checksum)
-        return copy.deepcopy(self._file_states.get(index, None))
+        index = self._get_index(file_path)
 
-    def set_state(self, file_path: str | Path, expected_checksum: str, state: Dict):
+        # convert to metadata object if necessary
+        if not isinstance(file_metadata, parser.SubmissionFileMetadata):
+            file_metadata = parser.SubmissionFileMetadata.from_json_dict(file_metadata)
+
+        # get stored state
+        stored_metadata, stored_data = self._file_states.get(index, (None, None))
+
+        # check if metadata matches
+        if stored_metadata is not None:
+            # convert stored_metadata to SubmissionFileMetadata
+            stored_metadata = parser.SubmissionFileMetadata.from_json_dict(stored_metadata)
+            if file_metadata == stored_metadata:
+                return copy.deepcopy(stored_data)
+        # metadata mismatch -> no valid stored state -> return None
+        return None
+
+    def set_state(self, file_path: str | Path, file_metadata: Dict | parser.SubmissionFileMetadata, state: Dict):
         """
         Log the state of a file:
          - Update the in-memory state
          - Persist the state to the JSON log file
 
         :param file_path: The path of the file whose state is being set.
+        :param file_metadata: Submission file metadata to store
         :param state: A dictionary containing the file's state data to be logged.
         """
         file_path = Path(file_path)
-        index = self._get_index(file_path, expected_checksum)
+        index = self._get_index(file_path)
+
+        # convert to metadata object if necessary
+        if not isinstance(file_metadata, parser.SubmissionFileMetadata):
+            file_metadata = parser.SubmissionFileMetadata.from_json_dict(file_metadata)
+
         # Update state in memory
-        self._file_states[index] = state
+        self._file_states[index] = (file_metadata.to_json_dict(), state)
 
         # Persist state to JSON log file
         with open(self._file_path, "a", newline='') as fd:
@@ -109,13 +135,15 @@ class FileProgressLogger:
                 # index keys
                 **{k: v for k, v in zip(self._index.keys(), index)},
                 # state
-                **state,
+                "metadata": file_metadata.to_json_dict(),
+                "state": state,
             }, fd)
             fd.write("\n")
 
-    def get_count_file_states(self) -> int:
+    def num_entries(self) -> int:
         """
         Returns the number of entries in the file_states dictionary
+
         :return: An integer representing the number of entries in the file_states dictionary
         """
         return len(self._file_states)

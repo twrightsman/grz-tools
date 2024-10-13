@@ -9,3 +9,5 @@ def test_SubmissionMetadata(temp_metadata_file_path):
 
     assert len(submission_metadata.files) > 0
 
+# TODO: test encrypt submission
+# TODO: test upload submission

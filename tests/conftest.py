@@ -189,7 +189,7 @@ def temp_metadata_file_path(temp_data_dir_path, temp_large_file_path) -> Path:
 @pytest.fixture
 def config_content(crypt4gh_public_key_file_path):
     return {
-        "public_key_path": crypt4gh_public_key_file_path.name,
+        "public_key_path": str(crypt4gh_public_key_file_path),
         "s3_url": '',
         "s3_bucket": 'testing',
         "s3_access_key": 'testing',

@@ -4,7 +4,7 @@ import json
 import logging
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, Generator
+from typing import Dict, Generator, override
 
 import jsonschema
 
@@ -44,7 +44,7 @@ class SubmissionFileMetadata:
         """
         # check if checksum type is correct
         if self.checksumType not in self._SUPPORTED_CHECKSUM_TYPES:
-            yield (f"{self.filePath.name}: Unsupported checksum type: {self.checksumType}. "
+            yield (f"{str(self.filePath)}: Unsupported checksum type: {self.checksumType}. "
                    f"Supported types: {self._SUPPORTED_CHECKSUM_TYPES}")
 
         # check if file type is correct
@@ -53,14 +53,14 @@ class SubmissionFileMetadata:
 
         # check if file extension is correct
         if self.fileType == "fastq":
-            if not any(self.filePath.name.endswith(suffix) for suffix in self._VALID_FASTQ_FILE_EXTENSIONS):
-                yield (f"{self.filePath.name}: Unsupported FASTQ file extensions! "
+            if not any(str(self.filePath).endswith(suffix) for suffix in self._VALID_FASTQ_FILE_EXTENSIONS):
+                yield (f"{str(self.filePath)}: Unsupported FASTQ file extensions! "
                        f"Valid extensions: {self._VALID_FASTQ_FILE_EXTENSIONS}")
-        elif self.fileType == "bam" and not self.filePath.name.endswith(".bam"):
-            yield f"{self.filePath.name}: Unsupported BAM file extensions! Must end with '.bam'"
+        elif self.fileType == "bam" and not str(self.filePath).endswith(".bam"):
+            yield f"{str(self.filePath)}: Unsupported BAM file extensions! Must end with '.bam'"
         elif self.fileType == "vcf":
-            if not any(self.filePath.name.endswith(suffix) for suffix in self._VALID_VCF_FILE_EXTENSIONS):
-                yield (f"{self.filePath.name}: Unsupported VCF file extensions! "
+            if not any(str(self.filePath).endswith(suffix) for suffix in self._VALID_VCF_FILE_EXTENSIONS):
+                yield (f"{str(self.filePath)}: Unsupported VCF file extensions! "
                        f"Valid extensions: {self._VALID_VCF_FILE_EXTENSIONS}")
 
     def validate_data(self, local_file_path: Path) -> Generator[str]:
@@ -75,25 +75,25 @@ class SubmissionFileMetadata:
 
         # Check if path exists
         if not local_file_path.exists():
-            yield f"{self.filePath.name} does not exist!"
+            yield f"{str(self.filePath)} does not exist!"
 
         # Check if path is a file
         if not local_file_path.is_file():
-            yield f"{self.filePath.name} is not a file!"
+            yield f"{str(self.filePath)} is not a file!"
 
         # Check if the checksum is correct
         if self.checksumType == "sha256":
             calculated_checksum = calculate_sha256(local_file_path)
             if self.fileChecksum != calculated_checksum:
-                yield (f"{self.filePath.name}: Checksum mismatch! "
+                yield (f"{str(self.filePath)}: Checksum mismatch! "
                        f"Expected: '{self.fileChecksum}', calculated: '{calculated_checksum}'.")
         else:
-            yield (f"{self.filePath.name}: Unsupported checksum type: {self.checksumType}. "
+            yield (f"{str(self.filePath)}: Unsupported checksum type: {self.checksumType}. "
                    f"Supported types: {self._SUPPORTED_CHECKSUM_TYPES}")
 
         # Check file size
         if self.fileSizeInBytes != local_file_path.stat().st_size:
-            yield (f"{self.filePath.name}: File size mismatch! "
+            yield (f"{str(self.filePath)}: File size mismatch! "
                    f"Expected: '{self.fileSizeInBytes}', observed: '{local_file_path.stat().st_size}'.")
 
     @classmethod
@@ -115,6 +115,15 @@ class SubmissionFileMetadata:
             fileSizeInBytes=data["fileSizeInBytes"],
             checksumType=data.get("checksumType", "sha256"),
         )
+
+    def to_json_dict(self):
+        return {
+            "filePath": str(self.filePath),
+            "fileType": self.fileType,
+            "fileChecksum": self.fileChecksum,
+            "fileSizeInBytes": self.fileSizeInBytes,
+            "checksumType": self.checksumType,
+        }
 
 
 class SubmissionMetadata:
@@ -268,9 +277,9 @@ class Submission:
 
         for local_file_path, file_metadata in self.files.items():
             try:
-                logged_state = progress_logger.get_state(local_file_path)
+                logged_state = progress_logger.get_state(local_file_path, file_metadata)
             except FileNotFoundError:
-                yield f"Missing file: {local_file_path.name}"
+                yield f"Missing file: {str(local_file_path)}"
                 continue
 
             # determine if we can skip the verification
@@ -283,21 +292,25 @@ class Submission:
                 # skip re-verification
                 continue
             else:
-                self.__log.debug("Validation for %s already passed, skipping...", local_file_path.name)
+                self.__log.debug("Validation for %s already passed, skipping...", str(local_file_path))
 
                 # skip re-verification
                 continue
 
-            self.__log.debug("Validating '%s'...", local_file_path.name)
+            self.__log.debug("Validating '%s'...", str(local_file_path))
             # validate the file
             errors = list(file_metadata.validate_data(local_file_path))
             validation_passed = len(errors) == 0
 
             # log state
-            progress_logger.set_state(local_file_path, {
-                "errors": errors,
-                "validation_passed": validation_passed,
-            })
+            progress_logger.set_state(
+                local_file_path,
+                file_metadata,
+                state={
+                    "errors": errors,
+                    "validation_passed": validation_passed,
+                }
+            )
 
             yield from errors
 
@@ -327,34 +340,40 @@ class Submission:
             self.__log.error(f"Error preparing public keys: {e}")
             raise e
 
-        for file_path, file_info in self.files.items():
+        for file_path, file_metadata in self.files.items():
             # encryption_successful = True
-            try:
-                logged_state = progress_logger.get_state(file_path)
-            except FileNotFoundError as e:
-                self.__log.error("Missing file: %s", file_path.name)
+            logged_state = progress_logger.get_state(file_path, file_metadata)
 
-                # TODO: Do we want to raise an exception and stop here or
-                #  do we want to continue with the remaining files?
-                # encryption_successful = False
-                # continue
-                raise e
+            if logged_state is None or not logged_state.get("encryption_successful", False):
+                self.__log.info("Encrypting file: %s", str(file_path))
+                encrypted_file_path = EncryptedSubmission.get_encrypted_file_path(file_path)
 
-            self.__log.info("Encrypting file: %s", file_path.name)
-            encrypted_file_path = EncryptedSubmission.get_encrypted_file_path(file_path)
-            # # write header to separate file
-            # encryption_header_path = EncryptedSubmission.get_encrypted_file_path(file_path)
+                try:
+                    Crypt4GH.encrypt_file(file_path, encrypted_file_path, public_keys)
 
-            try:
-                Crypt4GH.encrypt_file(file_path, encrypted_file_path, public_keys)
+                    self.__log.info(
+                        f"Encryption complete for {str(file_path)}. "
+                    )
+                    progress_logger.set_state(
+                        file_path,
+                        file_metadata,
+                        state={
+                            "encryption_successful": True
+                        }
+                    )
+                except Exception as e:
+                    self.__log.error("Encryption failed for '%s'", str(file_path))
 
-                self.__log.info(
-                    f"Encryption complete for {file_path.name}. "
-                )
-            except Exception as e:
-                self.__log.error("Encryption failed for '%s'", file_path.name)
+                    progress_logger.set_state(
+                        file_path,
+                        file_metadata,
+                        state={
+                            "encryption_successful": False,
+                            "error": str(e)
+                        }
+                    )
 
-                raise e
+                    raise e
 
         self.__log.info("File encryption completed.")
 

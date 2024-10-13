@@ -24,8 +24,8 @@ def test_prepare_submission(temp_metadata_file_path, temp_config_file_path, loca
         "grz_upload/cli.py",
         "prepare-submission",
         "-c", temp_config_file_path,
-        "--metafile", temp_metadata_file_path.name,
-        "--submission_dir", local_submission_dir_path.name,
+        "--metafile", str(temp_metadata_file_path),
+        "--submission_dir", str(local_submission_dir_path),
     ]
     with patch.object(sys, 'argv', testargs):
         grz_upload.cli.main()
@@ -44,8 +44,8 @@ def test_validate_submission(temp_metadata_file_path, temp_config_file_path):
     testargs = [
         "grz_upload/cli.py",
         "validate-submission",
-        "-c", temp_config_file_path.name,
-        "--submission_dir", temp_metadata_file_path.name,
+        "-c", str(temp_config_file_path),
+        "--submission_dir", str(temp_metadata_file_path),
     ]
     with patch.object(sys, 'argv', testargs):
         grz_upload.cli.main()
@@ -59,8 +59,8 @@ def test_submission(temp_metadata_file_path, temp_config_file_path):
     testargs = [
         "grz_upload/cli.py",
         "submit",
-        "-c", temp_config_file_path.name,
-        "--metafile", temp_metadata_file_path.name,
+        "-c", str(temp_config_file_path),
+        "--metafile", str(temp_metadata_file_path),
     ]
     with patch.object(sys, 'argv', testargs):
         grz_upload.cli.main()
