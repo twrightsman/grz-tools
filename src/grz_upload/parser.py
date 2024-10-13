@@ -258,6 +258,10 @@ class Submission:
         progress_logger = FileProgressLogger(
             log_file_path=progress_log_file
         )
+        # cleanup log file and keep only files listed here
+        progress_logger.cleanup(
+            keep=[(file_path, file_metadata) for file_path, file_metadata in self.files.items()]
+        )
         # fields:
         # - "errors": List[str]
         # - "validation_passed": bool
@@ -404,10 +408,14 @@ class Worker:
         )
         self.encrypted_files_dir = working_dir / "encrypted_files"
         self.log_dir = working_dir / "logs"
+        if not self.log_dir.is_dir():
+            self.log_dir.mkdir(mode=0o770, parents=True, exist_ok=True)
 
         # The session is derived from the metadata checksum,
         # s.t. a change of the metadata file also changes the session
+        # TODO: remove derivation from metadata checksum
         self.session_dir = self.log_dir / f"metadata-{self.submission.metadata.checksum}"
+        self.session_dir.mkdir(mode=0o770, parents=True, exist_ok=True)
         self.__log.info("Session directory: %s", self.session_dir)
 
         self.progress_file_checksum = self.session_dir / "progress_checksum.cjson"
@@ -458,34 +466,28 @@ class Worker:
         )
         return encrypted_submission
 
-    def show_summary(self, stage: str):
-        """
-        Display the summary of file processing for the specified stage.
-        :param stage: The current processing stage (e.g., 'checksum', 'encryption').
-        """
-        # TODO: update this method
-        total_files = len(self.submission.files)
-        checked_before, checked_now, failed, finished = 0, 0, 0, 0
-
-        if stage == "validation":
-            for file_info in self.submission.files.values():
-                if file_info["checked"]:
-                    checked_before += 1
-                else:
-                    checked_now += 1
-                if file_info["status"] == "Finished":
-                    finished += 1
-                elif file_info["status"] == "Failed":
-                    failed += 1
-
-        self.__log.info(f"Summary for {stage}:")
-        self.__log.info(f"Total files: {total_files}")
-        self.__log.info(f"Checked before: {checked_before}")
-        self.__log.info(f"Checked now: {checked_now}")
-        self.__log.info(f"Failed files: {failed}")
-        self.__log.info(f"Finished files: {finished}")
-
-        if total_files == finished:
-            self.__log.info(f"{stage} - Process Complete")
-        else:
-            self.__log.warning(f"{stage} - Process Incomplete. Address the errors before proceeding.")
+    # def show_summary(self, stage: str):
+    #     """
+    #     Display the summary of file processing for the specified stage.
+    #     :param stage: The current processing stage (e.g., 'checksum', 'encryption').
+    #     """
+    #     # TODO: update this method
+    #     file_stats = self.submission.get_stats()
+    #
+    #     checked_before, checked_now, failed, finished = 0, 0, 0, 0
+    #
+    #     if stage == "validate":
+    #         info_text = "SHA256 checksum validation"
+    #
+    #     self.__log.info(info_text + " - overview:")
+    #     self.__log.info(f"Total files: {file_stats['total']}")
+    #     self.__log.info(f"Added in previous run: {file_stats['old']}")
+    #     self.__log.info(f"Added in current run: {file_stats['new']}")
+    #     self.__log.error(f"Files not found: {file_stats['file_not_found']}") if file_stats['file_not_found'] != 0 else self.__log.info(f"Files not found: {file_stats['file_not_found']}")
+    #     self.__log.error(f"Failed files: {file_stats['failed']}") if file_stats['failed'] != 0 else self.__log.info(f"Failed files: {file_stats['failed']}")
+    #     self.__log.info(f"Finished files: {file_stats['processed']}")
+    #
+    #     if {file_stats['total']} == {file_stats['processed']}:
+    #         self.__log.info(f"{info_text} - Process Complete")
+    #     else:
+    #         self.__log.warning(f"{info_text} - Process Incomplete. Address the errors before proceeding.")

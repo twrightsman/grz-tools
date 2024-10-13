@@ -14,8 +14,13 @@ class FileProgressLogger:
     and allows querying the state based on the file path and modification time.
     """
 
-    _index = {"file_path": str, "modification_time": float}
-    _file_states: Dict[Tuple, Dict | List]
+    _index = {
+        "file_path": str,
+        "expected_checksum": str,
+        "modification_time": float,
+        "size": int
+    }
+    _file_states: Dict[Tuple[str, str, float, int], Dict | List]
 
     def __init__(self, log_file_path: str | Path):
         """
@@ -49,16 +54,30 @@ class FileProgressLogger:
             else:
                 raise ValueError(f"Path is not a file: '{self._file_path.name}'")
 
-    def _get_index(self, file_path: Path) -> Tuple:
+    def cleanup(self, keep: list):
+        self._file_path.unlink(missing_ok=True)
+        for file, expected_checksum in keep:
+            state = self.get_state(file, expected_checksum)
+            if state is not None:
+                self.set_state(file, expected_checksum, self.get_state(file, expected_checksum))
+
+    # ML: use full path as key
+    def _get_index(self, file_path: Path, expected_checksum: str) -> Tuple:
         """
         Generates a unique index for a given file based on its name and modification time.
 
         :param file_path: Path object representing the file.
         :return: A tuple containing the file name and modification time.
         """
-        return (file_path.name, file_path.stat().st_mtime)
+        if file_path.is_file():
+            return str(file_path), expected_checksum, file_path.stat().st_mtime, file_path.stat().st_size
+        else:
+            return str(file_path), expected_checksum, 0, 0  # catches files that do not exist
 
-    def get_state(self, file_path: str | Path) -> Dict | None:
+    def get_index(self, file_path: Path, expected_checksum: str) -> Tuple:
+        return self._get_index(file_path, expected_checksum)
+
+    def get_state(self, file_path: str | Path, expected_checksum: str) -> Dict | None:
         """
         Retrieves the stored state of a file if it exists in the log.
 
@@ -66,10 +85,10 @@ class FileProgressLogger:
         :return: A dictionary representing the file's state, or None if the file's state isn't logged.
         """
         file_path = Path(file_path)
-        index = self._get_index(file_path)
+        index = self._get_index(file_path, expected_checksum)
         return copy.deepcopy(self._file_states.get(index, None))
 
-    def set_state(self, file_path: str | Path, state: Dict):
+    def set_state(self, file_path: str | Path, expected_checksum: str, state: Dict):
         """
         Log the state of a file:
          - Update the in-memory state
@@ -79,8 +98,7 @@ class FileProgressLogger:
         :param state: A dictionary containing the file's state data to be logged.
         """
         file_path = Path(file_path)
-        index = self._get_index(file_path)
-
+        index = self._get_index(file_path, expected_checksum)
         # Update state in memory
         self._file_states[index] = state
 
@@ -94,3 +112,10 @@ class FileProgressLogger:
                 **state,
             }, fd)
             fd.write("\n")
+
+    def get_count_file_states(self) -> int:
+        """
+        Returns the number of entries in the file_states dictionary
+        :return: An integer representing the number of entries in the file_states dictionary
+        """
+        return len(self._file_states)
