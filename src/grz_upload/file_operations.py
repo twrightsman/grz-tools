@@ -129,7 +129,7 @@ class Crypt4GH(object):
     FILE_EXTENSION = ".c4gh"
 
     @staticmethod
-    def prepare_c4gh_keys(public_key_file_path: str) -> tuple[Key]:
+    def prepare_c4gh_keys(public_key_file_path: str | Path) -> tuple[Key]:
         """
         Prepare the key format c4gh needs, while it can contain
         multiple keys for multiple recipients, in our use case there is
