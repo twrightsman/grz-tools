@@ -19,51 +19,48 @@ def local_submission_dir_path(local_submission_dir) -> Path:
     return Path(local_submission_dir.strpath)
 
 
-def test_prepare_submission(temp_metadata_file_path, temp_config_file_path, local_submission_dir_path):
+def test_validate_submission(local_submission_dir_path, temp_config_file_path):
     testargs = [
-        "grz_upload/cli.py",
-        "prepare-submission",
-        "-c", temp_config_file_path,
-        "--metafile", str(temp_metadata_file_path),
+        "validate",
         "--submission_dir", str(local_submission_dir_path),
     ]
-    with patch.object(sys, 'argv', testargs):
-        grz_upload.cli.main()
 
-    # TODO implement
-    # assert that files have the correct structure:
-    # /submission root directory
-    # ├── metadata
-    # │   └── metadata.json
-    # └── files
-    #     ├── 5M.fastq.gz.c4gh
-    #     └── small_input_file.txt
-
-
-def test_validate_submission(temp_metadata_file_path, temp_config_file_path):
-    testargs = [
-        "grz_upload/cli.py",
-        "validate-submission",
-        "-c", str(temp_config_file_path),
-        "--submission_dir", str(temp_metadata_file_path),
-    ]
-    with patch.object(sys, 'argv', testargs):
-        grz_upload.cli.main()
+    from click.testing import CliRunner
+    runner = CliRunner()
+    result = runner.invoke(grz_upload.cli.cli, testargs, catch_exceptions=False)
 
     # test if command has correctly checked for:
     # - mismatched md5sums
     # - all files existing
 
+    assert result.exit_code == 0, result.output
 
-def test_submission(temp_metadata_file_path, temp_config_file_path):
+
+def test_encrypt_submission(local_submission_dir_path, temp_config_file_path):
     testargs = [
-        "grz_upload/cli.py",
-        "submit",
-        "-c", str(temp_config_file_path),
-        "--metafile", str(temp_metadata_file_path),
+        "encrypt",
+        "--submission_dir", str(local_submission_dir_path),
     ]
-    with patch.object(sys, 'argv', testargs):
-        grz_upload.cli.main()
+    from click.testing import CliRunner
+    runner = CliRunner()
+    result = runner.invoke(grz_upload.cli.cli, testargs, catch_exceptions=False)
 
     # TODO implement
     # check if upload to S3 bucket is working correctly
+
+    assert result.exit_code == 0, result.output
+
+
+def test_upload_submission(local_submission_dir_path, temp_config_file_path):
+    testargs = [
+        "upload",
+        "--submission_dir", str(local_submission_dir_path),
+    ]
+    from click.testing import CliRunner
+    runner = CliRunner()
+    result = runner.invoke(grz_upload.cli.cli, testargs, catch_exceptions=False)
+
+    # TODO implement
+    # check if upload to S3 bucket is working correctly
+
+    assert result.exit_code == 0, result.output

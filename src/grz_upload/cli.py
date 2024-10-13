@@ -1,13 +1,14 @@
 """
 CLI module for handling command-line interface operations.
 """
+import yaml
 
 ''' python modules '''
 import logging
 import logging.config
-import click
-from pathlib import Path
 from traceback import format_exc
+
+import click
 
 ''' package modules '''
 from grz_upload.logging_setup import add_filelogger
@@ -21,7 +22,8 @@ class OrderedGroup(click.Group):
         # Return commands in the order they were added
         return list(self.commands.keys())
 
-@click.group(cls = OrderedGroup)
+
+@click.group(cls=OrderedGroup)
 @click.version_option(version="0.1", prog_name="grz_upload")
 @click.option("--log-file", metavar="FILE", type=str, help="Path to log file")
 @click.option(
@@ -34,13 +36,9 @@ def cli(log_file: str = None, log_level: str = "INFO"):
     """
     Command-line interface function for setting up logging.
 
-    :param log_file:
-    - log_file (str): Path to the log file. If provided, a file logger will be added.
-    - log_level (str): Log level for the logger. It should be one of the following:
+    :param log_file: Path to the log file. If provided, a file logger will be added.
+    :param log_level: Log level for the logger. It should be one of the following:
                        DEBUG, INFO, WARNING, ERROR, CRITICAL.
-
-    Returns:
-    None
     """
 
     if log_file:
@@ -56,74 +54,86 @@ def cli(log_file: str = None, log_level: str = "INFO"):
 
 @cli.command()
 @click.option(
-    "-f",
-    "--folderpath",
+    "-s",
+    "--submission_dir",
     metavar="STRING",
     type=click.Path(exists=True, file_okay=False, dir_okay=True, readable=True, resolve_path=True),
     required=True,
-    help="filepath to the directory containing the data to be uploaded",
+    help="Path to the submission directory containing both metadata and files",
 )
-def validate(folderpath: str):
+@click.option(
+    "-w",
+    "--working_dir",
+    metavar="STRING",
+    type=click.Path(exists=True, file_okay=False, dir_okay=True, readable=True, writable=True, resolve_path=True),
+    required=False,
+    default=None,
+    callback=lambda c, p, v: v if v else c.params['submission_dir'],
+    help="Path to a working directory where intermediate files can be stored",
+)
+def validate(submission_dir: str, working_dir: str):
     """
     Validates the sha256 checksum of the sequence data files. This command must be executed before the encryption and upload can start.
-
-    Folderpath: The main path to the directory containing sub directories with the sequence data and metainformation.\n
-    Exception: Is raised if an error occurs during the checksum validation.
     """
 
-    log.info("Starting checksum validation...")
-    try:
-        folderpath = Path(folderpath)
-        worker_inst = Worker(folderpath)
-        worker_inst.validate()
+    log.info("Starting validation...")
 
-    except (KeyboardInterrupt, Exception) as e:
-        log.error(format_exc())
+    worker_inst = Worker(submission_dir, working_dir)
+    worker_inst.validate()
 
-    finally:
-        # if worker_inst.write_progress: write_yaml(worker_inst.progress_file_checksum, worker_inst.get_dict_for_report())
-        log.info("Shutting Down - Live long and prosper")
-        logging.shutdown()
+    log.info("Validation done!")
+
 
 
 @cli.command()
 @click.option(
-    "-f",
-    "--folderpath",
+    "-s",
+    "--submission_dir",
     metavar="STRING",
-    type=str,
+    type=click.Path(exists=True, file_okay=False, dir_okay=True, readable=True, resolve_path=True),
     required=True,
-    help="filepath to the directory containing the data to be uploaded",
+    help="Path to the submission directory containing both metadata and files",
 )
 @click.option(
-    "--pubkey_grz",
+    "-w",
+    "--working_dir",
     metavar="STRING",
-    type=str,
-    required=True,
-    help="public crypt4gh key of the GRZ",
+    type=click.Path(exists=True, file_okay=False, dir_okay=True, readable=True, writable=True, resolve_path=True),
+    required=False,
+    default=None,
+    callback=lambda c, p, v: v if v else c.params['folderpath'],
+    help="Path to a working directory where intermediate files can be stored",
 )
-def encrypt(folderpath, pubkey_grz):
+@click.option(
+    "-c",
+    "--config_file",
+    metavar="STRING",
+    type=click.Path(exists=True, file_okay=True, dir_okay=False, readable=True, resolve_path=True),
+    required=True,
+    default="~/.config/grz_upload/config.yaml",
+    help="Path to config file",
+)
+# @click.option(
+#     "--pubkey_grz",
+#     metavar="STRING",
+#     type=str,
+#     required=False,
+#     help="public crypt4gh key of the GRZ",
+# )
+def encrypt(submission_dir, working_dir, config_file, pubkey_grz):
     """
     Prepares a submission using the provided filepath, metafile, and public key.
-    Args:
-        folderpath (str): The path to the data files.
-        pubkey_grz (str): The public key for the submission.
-    Raises:
-        Exception: If an error occurs during the preparation of the submission.
-    Returns:
-        None
     """
+    with open(config_file, "r") as f:
+        config = yaml.safe_load(f)
 
-    options = {"folderpath": folderpath, "public_key": pubkey_grz}
+    pubkey_path = config["public_key_path"]
 
     log.info("Starting encryption...")
 
     try:
-
-        parser = Parser(folderpath)
-        parser.set_options(options)
-
-        parser.encrypt()
+        worker_inst = Worker(submission_dir, working_dir)
+        worker_inst.encrypt(pubkey_path)
 
     except (KeyboardInterrupt, Exception) as e:
         log.error(format_exc())
@@ -135,20 +145,31 @@ def encrypt(folderpath, pubkey_grz):
 
 @cli.command()
 @click.option(
-    "-c",
-    "--config",
+    "-s",
+    "--submission_dir",
     metavar="STRING",
-    type=str,
+    type=click.Path(exists=True, file_okay=False, dir_okay=True, readable=True, resolve_path=True),
     required=True,
-    help="config file containing the required s3 options",
+    help="Path to the submission directory containing both metadata and files",
 )
 @click.option(
-    "-f",
-    "--folderpath",
+    "-w",
+    "--working_dir",
     metavar="STRING",
-    type=str,
+    type=click.Path(exists=True, file_okay=False, dir_okay=True, readable=True, writable=True, resolve_path=True),
     required=False,
-    help="metafile in json format for data upload to a GRZ s3 structure",
+    default=None,
+    callback=lambda c, p, v: v if v else c.params['folderpath'],
+    help="Path to a working directory where intermediate files can be stored",
+)
+@click.option(
+    "-c",
+    "--config_file",
+    metavar="STRING",
+    type=click.Path(exists=True, file_okay=True, dir_okay=False, readable=True, resolve_path=True),
+    required=True,
+    default="~/.config/grz_upload/config.yaml",
+    help="Path to config file",
 )
 # @click.option(
 #     "--pubkey_grz",

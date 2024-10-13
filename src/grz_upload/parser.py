@@ -411,6 +411,10 @@ class EncryptedSubmission:
         raise NotImplementedError()
 
 
+class SubmissionValidationError(Exception):
+    pass
+
+
 class Worker:
     __log = log.getChild("Worker")
 
@@ -446,23 +450,25 @@ class Worker:
 
         self.__log.info('Starting metadata validation...')
         if errors := list(self.submission.metadata.validate()):
-            self.__log.error(
-                "\n".join([
-                    'Metadata validation failed! Errors:',
-                    *errors
-                ])
-            )
+            error_msg = "\n".join([
+                'Metadata validation failed! Errors:',
+                *errors
+            ])
+            self.__log.error(error_msg)
+
+            raise SubmissionValidationError(error_msg)
         else:
             self.__log.info('Metadata validation successful!')
 
         self.__log.info('Starting checksum validation...')
         if errors := list(self.submission.validate_checksums(progress_log_file=self.progress_file_checksum)):
-            self.__log.error(
-                "\n".join([
-                    'Checksum validation failed! Errors:',
-                    *errors
-                ])
-            )
+            error_msg = "\n".join([
+                'Checksum validation failed! Errors:',
+                *errors
+            ])
+            self.__log.error(error_msg)
+
+            raise SubmissionValidationError(error_msg)
         else:
             self.__log.info('Checksum validation successful!')
 
