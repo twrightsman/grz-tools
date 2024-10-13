@@ -430,16 +430,12 @@ class Worker:
         if not self.log_dir.is_dir():
             self.log_dir.mkdir(mode=0o770, parents=True, exist_ok=True)
 
-        # The session is derived from the metadata checksum,
-        # s.t. a change of the metadata file also changes the session
-        # TODO: remove derivation from metadata checksum
-        self.session_dir = self.log_dir / f"metadata-{self.submission.metadata.checksum}"
-        self.session_dir.mkdir(mode=0o770, parents=True, exist_ok=True)
-        self.__log.info("Session directory: %s", self.session_dir)
+        self.log_dir.mkdir(mode=0o770, parents=True, exist_ok=True)
+        self.__log.info("Log directory: %s", self.log_dir)
 
-        self.progress_file_checksum = self.session_dir / "progress_checksum.cjson"
-        self.progress_file_encrypt = self.session_dir / "progress_encrypt.cjson"
-        self.progress_file_upload = self.session_dir / "progress_upload.cjson"
+        self.progress_file_checksum = self.log_dir / "progress_checksum.cjson"
+        self.progress_file_encrypt = self.log_dir / "progress_encrypt.cjson"
+        self.progress_file_upload = self.log_dir / "progress_upload.cjson"
 
     def validate(self):
         """
