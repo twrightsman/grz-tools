@@ -1,16 +1,15 @@
 from __future__ import annotations
 
-import copy
 import json
 import logging
 from dataclasses import dataclass
 from pathlib import Path
-from typing import List, Tuple, Dict, Generator
+from typing import Dict, Generator
 
 import jsonschema
 
 from grz_upload.constants import GRZ_METADATA_JSONSCHEMA
-from grz_upload.file_operations import Crypt4GH, calculate_sha256, is_relative_subdirectory
+from grz_upload.file_operations import Crypt4GH, calculate_sha256
 from grz_upload.progress_logging import FileProgressLogger
 
 log = logging.getLogger(__name__)
@@ -35,33 +34,34 @@ class SubmissionFileMetadata:
 
     _SUPPORTED_CHECKSUM_TYPES = {"sha256"}
     _VALID_FILE_TYPES = {"bam", "vcf", "bed", "fastq"}
-    _VALID_FASTQ_FILE_ENDINGS = {".fastq", ".fastq.gz"}
-    _VALID_VCF_FILE_ENDINGS = {".vcf", ".vcf.gz", ".vcf.bgz", ".bcv"}
+    _VALID_FASTQ_FILE_EXTENSIONS = {".fastq", ".fastq.gz"}
+    _VALID_VCF_FILE_EXTENSIONS = {".vcf", ".vcf.gz", ".vcf.bgz", ".bcv"}
 
     def validate_metadata(self) -> Generator[str]:
         """
         Validates whether the metadata is correct and yields errors in the metadata.
         :return: Generator of strings describing the errors
         """
+        # check if checksum type is correct
         if self.checksumType not in self._SUPPORTED_CHECKSUM_TYPES:
             yield (f"{self.filePath.name}: Unsupported checksum type: {self.checksumType}. "
                    f"Supported types: {self._SUPPORTED_CHECKSUM_TYPES}")
 
+        # check if file type is correct
         if self.fileType not in self._VALID_FILE_TYPES:
             yield f"Unsupported file type: {self.fileType}"
 
+        # check if file extension is correct
         if self.fileType == "fastq":
-            if not any(self.filePath.name.endswith(ending) for ending in self._VALID_FASTQ_FILE_ENDINGS):
-                yield (f"{self.filePath.name}: Unsupported FASTQ file ending! "
-                       f"Valid endings: {self._VALID_FASTQ_FILE_ENDINGS}")
-
-        if self.fileType == "bam" and not self.filePath.name.endswith(".bam"):
-            yield f"{self.filePath.name}: Unsupported BAM file ending! Must end with '.bam'"
-
-        if self.fileType == "vcf":
-            if not any(self.filePath.name.endswith(ending) for ending in self._VALID_VCF_FILE_ENDINGS):
-                yield (f"{self.filePath.name}: Unsupported VCF file ending! "
-                       f"Valid endings: {self._VALID_VCF_FILE_ENDINGS}")
+            if not any(self.filePath.name.endswith(suffix) for suffix in self._VALID_FASTQ_FILE_EXTENSIONS):
+                yield (f"{self.filePath.name}: Unsupported FASTQ file extensions! "
+                       f"Valid extensions: {self._VALID_FASTQ_FILE_EXTENSIONS}")
+        elif self.fileType == "bam" and not self.filePath.name.endswith(".bam"):
+            yield f"{self.filePath.name}: Unsupported BAM file extensions! Must end with '.bam'"
+        elif self.fileType == "vcf":
+            if not any(self.filePath.name.endswith(suffix) for suffix in self._VALID_VCF_FILE_EXTENSIONS):
+                yield (f"{self.filePath.name}: Unsupported VCF file extensions! "
+                       f"Valid extensions: {self._VALID_VCF_FILE_EXTENSIONS}")
 
     def validate_data(self, local_file_path: Path) -> Generator[str]:
         """
@@ -242,16 +242,18 @@ class Submission:
         :return: Dictionary of `local_file_path` -> `SubmissionFileMetadata` pairs.
         """
         retval = {}
-        for file_path, file_info in self.metadata.files:
+        for file_path, file_metadata in self.metadata.files:
             local_file_path = self.files_dir / file_path
 
-            retval[local_file_path] = file_info
+            retval[local_file_path] = file_metadata
 
         return retval
 
-    def validate_checksums(self, progress_log_file: str | Path):
+    def validate_checksums(self, progress_log_file: str | Path) -> Generator[str]:
         """
         Validates the checksum of the files against the metadata and prints the errors.
+
+        :return: Generator of errors
         """
         progress_logger = FileProgressLogger(
             log_file_path=progress_log_file
@@ -336,7 +338,7 @@ class Submission:
 
             self.__log.info("Encrypting file: %s", file_path.name)
             encrypted_file_path = EncryptedSubmission.get_encrypted_file_path(file_path)
-            # TODO: write header to separate file
+            # # write header to separate file
             # encryption_header_path = EncryptedSubmission.get_encrypted_file_path(file_path)
 
             try:
@@ -367,23 +369,10 @@ class EncryptedSubmission:
     @property
     def encrypted_files(self):
         retval = {}
-        for file_path, file_info in self.metadata.files.items():
+        for file_path, file_metadata in self.metadata.files.items():
             encrypted_file_path = self.get_encrypted_file_path(self.encrypted_files_dir / file_path)
 
-            encrypted_file_info = copy.deepcopy(file_info)
-            encrypted_file_info["original_path"] = file_path
-            encrypted_file_info["type"] = "file"
-
-            retval[encrypted_file_path] = encrypted_file_info
-
-            # # add header path as separate file
-            # encryption_header_path = self.get_encryption_header_path(self.encrypted_files_dir / file_path)
-            #
-            # encryption_header_info = copy.deepcopy(file_info)
-            # encryption_header_info["original_path"] = file_path
-            # encryption_header_info["type"] = "header"
-            #
-            # retval[encryption_header_path] = encryption_header_info
+            retval[encrypted_file_path] = file_metadata
 
         return retval
 
@@ -421,9 +410,9 @@ class Worker:
         self.session_dir = self.log_dir / f"metadata-{self.submission.metadata.checksum}"
         self.__log.info("Session directory: %s", self.session_dir)
 
-        self.progress_file_checksum = self.session_dir / "progress_checksum.json"
-        self.progress_file_encrypt = self.session_dir / "progress_encrypt.json"
-        self.progress_file_upload = self.session_dir / "progress_upload.json"
+        self.progress_file_checksum = self.session_dir / "progress_checksum.cjson"
+        self.progress_file_encrypt = self.session_dir / "progress_encrypt.cjson"
+        self.progress_file_upload = self.session_dir / "progress_upload.cjson"
 
     def validate(self):
         """
