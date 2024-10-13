@@ -8,8 +8,10 @@ dependencies:
   - pyyaml
   - click
   - python-crypt4gh
+  - tqdm
+  - jsonschema
+  # packages required for development
   - pytest
   - pytest-mock
   - moto
   - numpy
-  - tqdm
