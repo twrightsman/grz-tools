@@ -179,7 +179,7 @@ class SubmissionMetadata:
             return self._files
 
         submission_files = {}
-        for donor in self.content.get("donors", []):
+        for donor in self.content.get("Donors", []):
             for lab_data in donor.get("labData", []):
                 for sequence_data in lab_data.get("sequenceData", []):
                     for file_data in sequence_data.get("files", []):
@@ -197,7 +197,7 @@ class SubmissionMetadata:
         :return: Generator of errors
         """
         submission_files = {}
-        for donor in self.content.get("donors", []):
+        for donor in self.content.get("Donors", []):
             for lab_data in donor.get("labData", []):
                 for sequence_data in lab_data.get("sequenceData", []):
                     for file_data in sequence_data.get("files", []):
