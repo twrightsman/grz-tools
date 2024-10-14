@@ -35,6 +35,7 @@ class SubmissionFileMetadata:
     _SUPPORTED_CHECKSUM_TYPES = {"sha256"}
     _VALID_FILE_TYPES = {"bam", "vcf", "bed", "fastq"}
     _VALID_FASTQ_FILE_EXTENSIONS = {".fastq", ".fastq.gz"}
+    _VALID_BED_FILE_EXTENSIONS = {".bed", ".bed.gz"}
     _VALID_VCF_FILE_EXTENSIONS = {".vcf", ".vcf.gz", ".vcf.bgz", ".bcv"}
 
     def validate_metadata(self) -> Generator[str]:
@@ -55,13 +56,17 @@ class SubmissionFileMetadata:
         if self.fileType == "fastq":
             if not any(str(self.filePath).endswith(suffix) for suffix in self._VALID_FASTQ_FILE_EXTENSIONS):
                 yield (f"{str(self.filePath)}: Unsupported FASTQ file extensions! "
-                       f"Valid extensions: {self._VALID_FASTQ_FILE_EXTENSIONS}")
+                       f"Valid extensions: {', '.join(self._VALID_FASTQ_FILE_EXTENSIONS)}")
         elif self.fileType == "bam" and not str(self.filePath).endswith(".bam"):
             yield f"{str(self.filePath)}: Unsupported BAM file extensions! Must end with '.bam'"
+        elif self.fileType == "bed" and not str(self.filePath).endswith(".bed"):
+            if not any(str(self.filePath).endswith(suffix) for suffix in self._VALID_BED_FILE_EXTENSIONS):
+                yield (f"{str(self.filePath)}: Unsupported BED file extensions! "
+                       f"Valid extensions: {', '.join(self._VALID_BED_FILE_EXTENSIONS)}")
         elif self.fileType == "vcf":
             if not any(str(self.filePath).endswith(suffix) for suffix in self._VALID_VCF_FILE_EXTENSIONS):
                 yield (f"{str(self.filePath)}: Unsupported VCF file extensions! "
-                       f"Valid extensions: {self._VALID_VCF_FILE_EXTENSIONS}")
+                       f"Valid extensions: {', '.join(self._VALID_VCF_FILE_EXTENSIONS)}")
 
     def validate_data(self, local_file_path: Path) -> Generator[str]:
         """
@@ -76,10 +81,14 @@ class SubmissionFileMetadata:
         # Check if path exists
         if not local_file_path.exists():
             yield f"{str(self.filePath)} does not exist!"
+            #ML: I added the return because otherwise one gets the normal python FileNotFoundError when the checksum is tested
+            return
 
         # Check if path is a file
         if not local_file_path.is_file():
             yield f"{str(self.filePath)} is not a file!"
+            #ML: I added the return because otherwise one gets the normal python FileNotFoundError when the checksum is tested
+            return
 
         # Check if the checksum is correct
         if self.checksumType == "sha256":
@@ -221,6 +230,10 @@ class SubmissionMetadata:
                             # check if FASTQ data was already linked in another submission
                             if file_metadata.fileType == "fastq":
                                 yield f"{file_metadata.filePath}: FASTQ file already linked in another submission!"
+                            elif file_metadata.fileType == "bed":
+                                yield f"{file_metadata.filePath}: BED file already linked in another submission!"
+                            if file_metadata.fileType == "bam":
+                                yield f"{file_metadata.filePath}: BAM file already linked in another submission!"
                         else:
                             submission_files[file_metadata.filePath] = file_metadata
                             # check if the file metadata itself is correct
@@ -251,7 +264,7 @@ class Submission:
         :return: Dictionary of `local_file_path` -> `SubmissionFileMetadata` pairs.
         """
         retval = {}
-        for file_path, file_metadata in self.metadata.files:
+        for file_path, file_metadata in self.metadata.files.items():
             local_file_path = self.files_dir / file_path
 
             retval[local_file_path] = file_metadata
@@ -276,11 +289,14 @@ class Submission:
         # - "validation_passed": bool
 
         for local_file_path, file_metadata in self.files.items():
-            try:
-                logged_state = progress_logger.get_state(local_file_path, file_metadata)
-            except FileNotFoundError:
-                yield f"Missing file: {str(local_file_path)}"
-                continue
+
+
+            #ML: this will never trigger a FileNotFoundError because the return of get_state is Dict | None
+            # try:
+            logged_state = progress_logger.get_state(local_file_path, file_metadata)
+            # except FileNotFoundError:
+                # yield f"Missing file: {str(local_file_path)}"
+                # continue
 
             # determine if we can skip the verification
             if logged_state is None:
