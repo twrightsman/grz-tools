@@ -408,7 +408,8 @@ class EncryptedSubmission:
 
     @staticmethod
     def get_encrypted_file_path(file_path: str | Path) -> Path:
-        return Path(file_path).with_suffix(".c4gh")
+        p = Path(file_path)
+        return p.with_suffix(p.suffix + ".c4gh")
 
     @staticmethod
     def get_encryption_header_path(file_path: str | Path) -> Path:
