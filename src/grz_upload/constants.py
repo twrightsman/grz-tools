@@ -1,14 +1,16 @@
-_PACKAGE_ROOT = "grz_upload"
+import json
 
-_LOGGING_FORMAT = "%(asctime)s [%(levelname)s] %(name)s: %(message)s"
-_LOGGING_DATEFMT = "%Y-%m-%d %I:%M %p"
-_LOGGING_CONFIG = {
+PACKAGE_ROOT = "grz_upload"
+
+LOGGING_FORMAT = "%(asctime)s [%(levelname)s] %(name)s: %(message)s"
+LOGGING_DATEFMT = "%Y-%m-%d %I:%M %p"
+LOGGING_CONFIG = {
     "version": 1,
     "disable_existing_loggers": True,
     "formatters": {
         "standard": {
-            "format": _LOGGING_FORMAT,
-            "datefmt": _LOGGING_DATEFMT,
+            "format": LOGGING_FORMAT,
+            "datefmt": LOGGING_DATEFMT,
         },
     },
     "handlers": {
@@ -25,7 +27,7 @@ _LOGGING_CONFIG = {
             "level": "WARNING",
             "propagate": False,
         },
-        _PACKAGE_ROOT: {"handlers": ["default"], "level": "INFO", "propagate": False},
+        PACKAGE_ROOT: {"handlers": ["default"], "level": "INFO", "propagate": False},
         "__main__": {  # if __name__ == '__main__'
             "handlers": ["default"],
             "level": "DEBUG",
@@ -33,3 +35,6 @@ _LOGGING_CONFIG = {
         },
     },
 }
+
+with open("resources/grz-schema.json", "r") as fd:
+    GRZ_METADATA_JSONSCHEMA = json.load(fd)

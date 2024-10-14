@@ -1,69 +1,124 @@
-"""
-Module: file_operations
-This module provides functions for file operations, including calculating the MD5 value of a file,
-encrypting files using Crypt4GH, and decrypting files.
-Class:
-    - Crypt4GH: A class that provides encryption and decryption functionalities using Crypt4GH.
-Attributes:
-    - Crypt4GH.Key: A type hint for the key used by Crypt4GH.
-    - Crypt4GH.VERSION: The version of Crypt4GH.
-    - Crypt4GH.SEGMENT_SIZE: The size of each segment for encryption.
-    - Crypt4GH.FILE_EXTENSION: The file extension used for encrypted files.
-"""
+from __future__ import annotations
 
-from hashlib import md5, sha256
-from os import urandom
-from os.path import getsize
+import hashlib
+import io
+import json
 import logging
+import os
+from functools import partial
+from getpass import getpass
+from os.path import getsize
+from pathlib import Path
+from typing import TextIO, Tuple
 
-# import crypt4gh
 import crypt4gh.header
 import crypt4gh.keys
-from nacl.bindings import crypto_aead_chacha20poly1305_ietf_encrypt
+import crypt4gh.lib
 from nacl.public import PrivateKey
 from tqdm.auto import tqdm
+
+# if TYPE_CHECKING:
+#     from hashlib import _Hash
+# else:
+#     _Hash = None
 
 log = logging.getLogger(__name__)
 
 
-def calculate_sha256(file_path, chunk_size=2 ** 16):
+def calculate_sha256(file_path: str | Path, chunk_size=2 ** 16, progress=True) -> str:
     '''
     Calculate the sha256 value of a file in chunks
 
-    :param file_path: pathlib.Path()
-    :param chunk_size: int:
-    :rtype: string
+    :param file_path: path to the file
+    :param chunk_size: Chunk size in bytes
+    :param progress: Print progress
     :return: calculated sha256 value of file_path
     '''
+    file_path = Path(file_path)
     total_size = getsize(file_path)
-    sha256_hash = sha256()
+    sha256_hash = hashlib.sha256()
     with open(file_path, 'rb') as f:
-        with tqdm(total=total_size, unit='B', unit_scale=True, desc="Calculating MD5") as pbar:
-            for chunk in iter(lambda: f.read(chunk_size), b""):
+        if progress and (total_size > chunk_size):
+            with tqdm(total=total_size, unit='B', unit_scale=True, desc=f"Calculating SHA256 {file_path.name}") as pbar:
+                while chunk := f.read(chunk_size):
+                    sha256_hash.update(chunk)
+                    pbar.update(len(chunk))
+        else:
+            while chunk := f.read(chunk_size):
                 sha256_hash.update(chunk)
-                pbar.update(len(chunk))
     return sha256_hash.hexdigest()
 
 
-def calculate_md5(file_path, chunk_size=2 ** 16):
+def calculate_md5(file_path, chunk_size=2 ** 16, progress=True) -> str:
     """
     Calculate the md5 value of a file in chunks
 
-    :param file_path: pathlib.Path()
-    :param chunk_size: int:
-    :rtype: string
+    :param file_path: path to the file
+    :param chunk_size: Chunk size in bytes
+    :param progress: Print progress
     :return: calculated md5 value of file_path
     """
     total_size = getsize(file_path)
-    md5_hash = md5()
+    md5_hash = hashlib.md5()
     with open(file_path, "rb") as f:
-        with tqdm(
-                total=total_size, unit="B", unit_scale=True, desc="Calculating MD5"
-        ) as pbar:
-            for chunk in iter(lambda: f.read(chunk_size), b""):
+        if progress and (total_size > chunk_size):
+            with tqdm(total=total_size, unit="B", unit_scale=True, desc="Calculating MD5") as pbar:
+                while chunk := f.read(chunk_size):
+                    md5_hash.update(chunk)
+                    pbar.update(len(chunk))
+        else:
+            while chunk := f.read(chunk_size):
                 md5_hash.update(chunk)
-                pbar.update(len(chunk))
     return md5_hash.hexdigest()
+
+
+def read_multiple_json(input: TextIO, buffer_size=65536, max_buffer_size=134217728):
+    decoder = json.JSONDecoder()
+    buffer = io.StringIO()  # Use StringIO as the buffer
+
+    while chunk := input.read(buffer_size):
+        if len(buffer.getvalue()) + len(chunk) > max_buffer_size:
+            raise MemoryError("Reached maximum buffer size while reading input")
+
+        # append chunk to buffer
+        buffer.write(chunk)
+
+        while True:
+            try:
+                data = buffer.getvalue().lstrip()
+                # Attempt to decode a JSON object from the current buffer content
+                obj, idx = decoder.raw_decode(data)
+                yield obj  # Process the decoded object
+
+                # Reset the buffer with the unprocessed content
+                buffer = io.StringIO(data[idx:])
+            except json.JSONDecodeError as e:
+                # If a JSONDecodeError occurs, we need more data, so break out to read the next chunk
+                break
+
+    # If there is any remaining content after the loop, try to process it
+    remaining_data = buffer.getvalue().strip()
+    if remaining_data != "":
+        raise ValueError("Remaining data is not empty. Is there invalid JSON?")
+
+
+def is_relative_subdirectory(relative_path: str | Path, root_directory: str | Path) -> bool:
+    """
+    Check if the target path is a subdirectory of the root path
+    using os.path.commonpath() without checking the file system.
+
+    :param relative_path: The target path.
+    :param root_directory: The root directory.
+    :return: True if relative_path is a subdirectory of root_directory, otherwise False.
+    """
+    # Convert both paths to absolute paths without resolving symlinks
+    root_directory = os.path.abspath(root_directory)
+    relative_path = os.path.abspath(relative_path)
+
+    common_path = os.path.commonpath([root_directory, relative_path])
+
+    # Check if the common path is equal to the root path
+    return common_path == root_directory
 
 
 class Crypt4GH(object):
@@ -73,11 +128,8 @@ class Crypt4GH(object):
     SEGMENT_SIZE = 65536
     FILE_EXTENSION = ".c4gh"
 
-    def __init__(self, logger):
-        self.__logger = logger
-
     @staticmethod
-    def prepare_c4gh_keys(public_key_file_path: str) -> tuple[Key]:
+    def prepare_c4gh_keys(public_key_file_path: str | Path) -> tuple[Key]:
         """
         Prepare the key format c4gh needs, while it can contain
         multiple keys for multiple recipients, in our use case there is
@@ -89,49 +141,7 @@ class Crypt4GH(object):
         return keys
 
     @staticmethod
-    def prepare_header(keys: tuple[Key]) -> tuple[bytes, bytes, tuple[Key]]:
-        """Prepare header separately to be able to use multiupload"""
-        encryption_method = 0  # only choice for this version
-        session_key = urandom(32)  # we use one session key for all blocks
-        # Output the header
-        header_content = crypt4gh.header.make_packet_data_enc(
-            encryption_method, session_key
-        )
-        header_packets = crypt4gh.header.encrypt(header_content, keys)
-        header_bytes = crypt4gh.header.serialize(header_packets)
-        return (header_bytes, session_key, keys)
-
-    @staticmethod
-    def encrypt_segment(data: bytes, key: bytes) -> bytes:
-        """Encrypt 64kb block with crypt4gh"""
-        nonce = urandom(12)
-        encrypted_data = crypto_aead_chacha20poly1305_ietf_encrypt(
-            data, None, nonce, key
-        )
-        return nonce + encrypted_data
-
-    @staticmethod
-    def encrypt_part(byte_string: bytes, session_key: bytes) -> bytes:
-        """Encrypt incoming chunk, using session_key"""
-        data_size = len(byte_string)
-        enc_data = b""
-        position = 0
-        while True:
-            data_block = b""
-            # Determine how much data to read
-            segment_len = min(Crypt4GH.SEGMENT_SIZE, data_size - position)
-            if segment_len == 0:  # No more data to read
-                break
-            # Read the segment from the byte string
-            data_block = byte_string[position: position + segment_len]
-            # Update the position
-            position += segment_len
-            # Process the data in `segment`
-            enc_data += Crypt4GH.encrypt_segment(data_block, session_key)
-        return enc_data
-
-    @staticmethod
-    def encrypt_file(input_path, output_path, public_keys):
+    def encrypt_file(input_path: str | Path, output_path: str | Path, public_keys: Tuple[Crypt4GH.Key]):
         """
         Encrypt the file, properly handling the Crypt4GH header.
 
@@ -140,26 +150,151 @@ class Crypt4GH(object):
         :param keys: tuple[Key]
         :return: tuple with md5 values for original file, encrypted file
         """
-        try:
-            # prepare header
-            header_info = Crypt4GH.prepare_header(public_keys)
+        # TODO: Progress bar?
+        # TODO: store header in separate file?
+        input_path = Path(input_path)
+        output_path = Path(output_path)
 
-            # read the whole file into memory
-            with open(input_path, "rb") as fd:
-                data = fd.read()
+        total_size = getsize(input_path)
+        with open(input_path, "rb") as in_fd, open(output_path, "wb") as out_fd:
+            with TqdmIOWrapper(in_fd, tqdm(
+                    total=total_size,
+                    desc=f"Encrypting: '{input_path.name}'",
+                    unit="B",
+                    unit_scale=True,
+                    # unit_divisor=1024,  # make use of standard units e.g. KB, MB, etc.
+                    miniters=1,
+            )) as pbar_in_fd:
+                crypt4gh.lib.encrypt(
+                    keys=public_keys,
+                    infile=pbar_in_fd,
+                    outfile=out_fd,
+                )
 
-            encrypted_data = Crypt4GH.encrypt_part(data, header_info[1])
-            # add header
-            encrypted_data = header_info[0] + encrypted_data
+    @staticmethod
+    def retrieve_private_key(seckey_path):
+        seckeypath = os.path.expanduser(seckey_path)
+        if not os.path.exists(seckeypath):
+            raise ValueError('Secret key not found')
 
-            # Calculate SHA256 sums
-            # Write encrypted data to the output file
-            with open(output_path, "wb") as output_file:
-                output_file.write(encrypted_data)
+        passphrase = os.getenv('C4GH_PASSPHRASE')
+        if passphrase:
+            passphrase_callback = lambda: passphrase
+        else:
+            passphrase_callback = partial(getpass, prompt=f'Passphrase for {seckey_path}: ')
 
-        except Exception as e:
-            raise e
+        return crypt4gh.keys.get_private_key(seckeypath, passphrase_callback)
 
     @staticmethod
     def decrypt_file(input_path, output_path, private_key):
-        raise NotImplementedError()
+        total_size = getsize(input_path)
+        with open(input_path, "rb") as in_fd, open(output_path, "wb") as out_fd:
+            with TqdmIOWrapper(in_fd, tqdm(
+                    total=total_size,
+                    desc=f"Decrypting: '{input_path.name}'",
+                    unit="B",
+                    unit_scale=True,
+                    # unit_divisor=1024,  # make use of standard units e.g. KB, MB, etc.
+                    miniters=1,
+            )) as pbar_in_fd:
+                crypt4gh.lib.decrypt(
+                    keys=private_key,
+                    infile=pbar_in_fd,
+                    outfile=out_fd,
+                )
+
+
+class TqdmIOWrapper(io.RawIOBase):
+    """
+    Wrapper to record reads and writes in a tqdm progress bar.
+
+    Example:
+        very_long_input = io.StringIO("0123456789abcdef" * 100000)
+        total_size = len(very_long_input.getvalue())
+
+        batch_size = 10 ** 4  # 10kb
+        with open("/dev/null", "w") as fd:
+            with TqdmIOWrapper(fd, tqdm(
+                    total=total_size,
+                    desc="Printing: ",
+                    unit="B",
+                    unit_scale=True,
+                    # unit_divisor=1024,  # make use of standard units e.g. KB, MB, etc.
+                    miniters=1,
+            )) as pbar_fd:
+                while chunk := very_long_input.read(batch_size):
+                    pbar_fd.write(chunk)
+
+                    time.sleep(0.1)
+    """
+
+    def __init__(self, io_buf: io.RawIOBase, progress_bar):
+        """
+
+        :param io_buf: the buffer to wrap
+        :param progress_bar: tqdm progress bar
+        """
+        self.io_buf = io_buf
+        self.callback = progress_bar.update
+
+    def write(self, data):
+        nbytes_written = self.io_buf.write(data)
+        if nbytes_written:
+            self.callback(nbytes_written)
+        return nbytes_written
+
+    def read(self, size=-1) -> bytes:
+        data = self.io_buf.read(size)
+        if data:
+            self.callback(len(data))
+
+        return data
+
+    def readinto(self, buffer, /):
+        nbytes_written = self.io_buf.readinto(buffer)
+        if nbytes_written:
+            self.callback(nbytes_written)
+
+        return nbytes_written
+
+    def flush(self):
+        # Ensure all data is flushed to the underlying binary IO object
+        self.io_buf.flush()
+
+    def close(self):
+        # Close the underlying binary IO object
+        self.io_buf.close()
+
+# class HashLoggingWriter(io.RawIOBase):
+#     def __init__(self, binary_io: io.RawIOBase, hash_algorithm: str = 'sha256'):
+#         self._binary_io = binary_io  # The underlying binary I/O object
+#         self.hash_algorithm = hash_algorithm  # Hashing algorithm (e.g., 'md5', 'sha256', etc.)
+#
+#         # Create the hash object based on the specified algorithm
+#         if hash_algorithm not in hashlib.algorithms_available:
+#             raise ValueError(f"Unsupported hash algorithm: {hash_algorithm}")
+#         self.hash_obj = hashlib.new(hash_algorithm)
+#
+#     def write(self, b: bytes) -> int:
+#         # Update the hash with the bytes being written
+#         self.hash_obj.update(b)
+#         # Write the bytes to the underlying binary IO object
+#         return self._binary_io.write(b)
+#
+#     def read(self, size=-1) -> bytes:
+#         raise NotImplementedError("This class is write-only")
+#
+#     def readinto(self, b: bytearray) -> int:
+#         raise NotImplementedError("This class is write-only")
+#
+#     def flush(self):
+#         # Ensure all data is flushed to the underlying binary IO object
+#         self._binary_io.flush()
+#
+#     def close(self):
+#         # Close the underlying binary IO object
+#         self._binary_io.close()
+#
+#     def get_hash(self):
+#         # Return the hex digest of the hash
+#         return self.hash_obj
