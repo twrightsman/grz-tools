@@ -24,7 +24,7 @@ class OrderedGroup(click.Group):
 
 
 @click.group(cls=OrderedGroup)
-@click.version_option(version="0.1", prog_name="grz_upload")
+@click.version_option(version="0.1", prog_name="grz-cli")
 @click.option("--log-file", metavar="FILE", type=str, help="Path to log file")
 @click.option(
     "--log-level",
@@ -55,7 +55,7 @@ def cli(log_file: str = None, log_level: str = "INFO"):
 @cli.command()
 @click.option(
     "-s",
-    "--submission_dir",
+    "--submission-dir",
     metavar="STRING",
     type=click.Path(exists=True, file_okay=False, dir_okay=True, readable=True, resolve_path=True),
     required=True,
@@ -63,7 +63,7 @@ def cli(log_file: str = None, log_level: str = "INFO"):
 )
 @click.option(
     "-w",
-    "--working_dir",
+    "--working-dir",
     metavar="STRING",
     type=click.Path(exists=True, file_okay=False, dir_okay=True, readable=True, writable=True, resolve_path=True),
     required=False,
@@ -88,7 +88,7 @@ def validate(submission_dir: str, working_dir: str):
 @cli.command()
 @click.option(
     "-s",
-    "--submission_dir",
+    "--submission-dir",
     metavar="STRING",
     type=click.Path(exists=True, file_okay=False, dir_okay=True, readable=True, resolve_path=True),
     required=True,
@@ -96,7 +96,7 @@ def validate(submission_dir: str, working_dir: str):
 )
 @click.option(
     "-w",
-    "--working_dir",
+    "--working-dir",
     metavar="STRING",
     type=click.Path(exists=True, file_okay=False, dir_okay=True, readable=True, writable=True, resolve_path=True),
     required=False,
@@ -106,7 +106,7 @@ def validate(submission_dir: str, working_dir: str):
 )
 @click.option(
     "-c",
-    "--config_file",
+    "--config-file",
     metavar="STRING",
     type=click.Path(exists=True, file_okay=True, dir_okay=False, readable=True, resolve_path=True),
     required=True,
@@ -146,7 +146,7 @@ def encrypt(submission_dir, working_dir, config_file, pubkey_grz):
 @cli.command()
 @click.option(
     "-s",
-    "--submission_dir",
+    "--submission-dir",
     metavar="STRING",
     type=click.Path(exists=True, file_okay=False, dir_okay=True, readable=True, resolve_path=True),
     required=True,
@@ -154,7 +154,7 @@ def encrypt(submission_dir, working_dir, config_file, pubkey_grz):
 )
 @click.option(
     "-w",
-    "--working_dir",
+    "--working-dir",
     metavar="STRING",
     type=click.Path(exists=True, file_okay=False, dir_okay=True, readable=True, writable=True, resolve_path=True),
     required=False,
@@ -164,7 +164,7 @@ def encrypt(submission_dir, working_dir, config_file, pubkey_grz):
 )
 @click.option(
     "-c",
-    "--config_file",
+    "--config-file",
     metavar="STRING",
     type=click.Path(exists=True, file_okay=True, dir_okay=False, readable=True, resolve_path=True),
     required=True,
@@ -179,7 +179,7 @@ def encrypt(submission_dir, working_dir, config_file, pubkey_grz):
 #     help="public crypt4gh key of the GRZ",
 # )
 @click.option(
-    "--use_s3cmd",
+    "--use-s3cmd",
     metavar="BOOLEAN",
     is_flag=True
 )
