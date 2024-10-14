@@ -81,13 +81,13 @@ class SubmissionFileMetadata:
         # Check if path exists
         if not local_file_path.exists():
             yield f"{str(self.filePath)} does not exist!"
-            #ML: I added the return because otherwise one gets the normal python FileNotFoundError when the checksum is tested
+            # Return here as following tests cannot work
             return
 
         # Check if path is a file
         if not local_file_path.is_file():
             yield f"{str(self.filePath)} is not a file!"
-            #ML: I added the return because otherwise one gets the normal python FileNotFoundError when the checksum is tested
+            # Return here as following tests cannot work
             return
 
         # Check if the checksum is correct
@@ -230,8 +230,6 @@ class SubmissionMetadata:
                             # check if FASTQ data was already linked in another submission
                             if file_metadata.fileType == "fastq":
                                 yield f"{file_metadata.filePath}: FASTQ file already linked in another submission!"
-                            elif file_metadata.fileType == "bed":
-                                yield f"{file_metadata.filePath}: BED file already linked in another submission!"
                             if file_metadata.fileType == "bam":
                                 yield f"{file_metadata.filePath}: BAM file already linked in another submission!"
                         else:
@@ -289,14 +287,7 @@ class Submission:
         # - "validation_passed": bool
 
         for local_file_path, file_metadata in self.files.items():
-
-
-            #ML: this will never trigger a FileNotFoundError because the return of get_state is Dict | None
-            # try:
             logged_state = progress_logger.get_state(local_file_path, file_metadata)
-            # except FileNotFoundError:
-                # yield f"Missing file: {str(local_file_path)}"
-                # continue
 
             # determine if we can skip the verification
             if logged_state is None:
