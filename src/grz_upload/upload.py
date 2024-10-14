@@ -32,7 +32,14 @@ class UploadWorker(metaclass=abc.ABCMeta):
             try:
                 self.upload_file(local_file_path, s3_object_id)
             except Exception as e:
-                raise UploadError(f"Failed to upload {local_file_path}") from e
+                raise UploadError(f"Failed to upload {local_file_path} (object id: {s3_object_id})") from e
+
+        # upload the metadata file
+        s3_object_id = Path(submission_id) / "metadata" / "metadata.json"
+        try:
+            self.upload_file(encrypted_submission.metadata.file_path, s3_object_id)
+        except Exception as e:
+            raise UploadError(f"Failed to upload metadata: {local_file_path} (object id: {s3_object_id})") from e
 
     @abc.abstractmethod
     def upload_file(self, local_file_path: str | Path, s3_object_id: str):
