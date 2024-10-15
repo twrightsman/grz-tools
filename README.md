@@ -79,7 +79,7 @@ s3_secret: 'your-s3-bucket-secret'
 Here's an example of how to use this tool:
 
 1. Prepare your `config.yaml` file with the appropriate paths and S3 bucket name.
-2. Ensure your metadata CSV file is correctly formatted with at least `file_path` and `s3_key` columns.
+2. Ensure your metadata CSV file is correctly formatted with at least `File id` and `File Location` columns.
 3. Run the tool using the command:
 
 ```bash

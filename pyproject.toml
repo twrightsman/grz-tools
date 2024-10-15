@@ -39,7 +39,8 @@ grz-cli = "grz_upload.cli:cli"
 dev = [
     "pytest",
     "pytest-cov",
-    "moto[s3]"
+    "moto[s3]",
+    "ruff"
 ]
 
 [tool.ruff]
