@@ -2,9 +2,10 @@ from __future__ import annotations
 
 import json
 import logging
+from collections.abc import Generator
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, Generator, override
+from typing import Dict, override
 
 import jsonschema
 
@@ -45,8 +46,10 @@ class SubmissionFileMetadata:
         """
         # check if checksum type is correct
         if self.checksumType not in self._SUPPORTED_CHECKSUM_TYPES:
-            yield (f"{str(self.filePath)}: Unsupported checksum type: {self.checksumType}. "
-                   f"Supported types: {self._SUPPORTED_CHECKSUM_TYPES}")
+            yield (
+                f"{str(self.filePath)}: Unsupported checksum type: {self.checksumType}. "
+                f"Supported types: {self._SUPPORTED_CHECKSUM_TYPES}"
+            )
 
         # check if file type is correct
         if self.fileType not in self._VALID_FILE_TYPES:
@@ -54,19 +57,34 @@ class SubmissionFileMetadata:
 
         # check if file extension is correct
         if self.fileType == "fastq":
-            if not any(str(self.filePath).endswith(suffix) for suffix in self._VALID_FASTQ_FILE_EXTENSIONS):
-                yield (f"{str(self.filePath)}: Unsupported FASTQ file extensions! "
-                       f"Valid extensions: {', '.join(self._VALID_FASTQ_FILE_EXTENSIONS)}")
+            if not any(
+                str(self.filePath).endswith(suffix)
+                for suffix in self._VALID_FASTQ_FILE_EXTENSIONS
+            ):
+                yield (
+                    f"{str(self.filePath)}: Unsupported FASTQ file extensions! "
+                    f"Valid extensions: {', '.join(self._VALID_FASTQ_FILE_EXTENSIONS)}"
+                )
         elif self.fileType == "bam" and not str(self.filePath).endswith(".bam"):
             yield f"{str(self.filePath)}: Unsupported BAM file extensions! Must end with '.bam'"
         elif self.fileType == "bed" and not str(self.filePath).endswith(".bed"):
-            if not any(str(self.filePath).endswith(suffix) for suffix in self._VALID_BED_FILE_EXTENSIONS):
-                yield (f"{str(self.filePath)}: Unsupported BED file extensions! "
-                       f"Valid extensions: {', '.join(self._VALID_BED_FILE_EXTENSIONS)}")
+            if not any(
+                str(self.filePath).endswith(suffix)
+                for suffix in self._VALID_BED_FILE_EXTENSIONS
+            ):
+                yield (
+                    f"{str(self.filePath)}: Unsupported BED file extensions! "
+                    f"Valid extensions: {', '.join(self._VALID_BED_FILE_EXTENSIONS)}"
+                )
         elif self.fileType == "vcf":
-            if not any(str(self.filePath).endswith(suffix) for suffix in self._VALID_VCF_FILE_EXTENSIONS):
-                yield (f"{str(self.filePath)}: Unsupported VCF file extensions! "
-                       f"Valid extensions: {', '.join(self._VALID_VCF_FILE_EXTENSIONS)}")
+            if not any(
+                str(self.filePath).endswith(suffix)
+                for suffix in self._VALID_VCF_FILE_EXTENSIONS
+            ):
+                yield (
+                    f"{str(self.filePath)}: Unsupported VCF file extensions! "
+                    f"Valid extensions: {', '.join(self._VALID_VCF_FILE_EXTENSIONS)}"
+                )
 
     def validate_data(self, local_file_path: Path) -> Generator[str]:
         """
@@ -94,16 +112,22 @@ class SubmissionFileMetadata:
         if self.checksumType == "sha256":
             calculated_checksum = calculate_sha256(local_file_path)
             if self.fileChecksum != calculated_checksum:
-                yield (f"{str(self.filePath)}: Checksum mismatch! "
-                       f"Expected: '{self.fileChecksum}', calculated: '{calculated_checksum}'.")
+                yield (
+                    f"{str(self.filePath)}: Checksum mismatch! "
+                    f"Expected: '{self.fileChecksum}', calculated: '{calculated_checksum}'."
+                )
         else:
-            yield (f"{str(self.filePath)}: Unsupported checksum type: {self.checksumType}. "
-                   f"Supported types: {self._SUPPORTED_CHECKSUM_TYPES}")
+            yield (
+                f"{str(self.filePath)}: Unsupported checksum type: {self.checksumType}. "
+                f"Supported types: {self._SUPPORTED_CHECKSUM_TYPES}"
+            )
 
         # Check file size
         if self.fileSizeInBytes != local_file_path.stat().st_size:
-            yield (f"{str(self.filePath)}: File size mismatch! "
-                   f"Expected: '{self.fileSizeInBytes}', observed: '{local_file_path.stat().st_size}'.")
+            yield (
+                f"{str(self.filePath)}: File size mismatch! "
+                f"Expected: '{self.fileSizeInBytes}', observed: '{local_file_path.stat().st_size}'."
+            )
 
     @classmethod
     def from_json_dict(cls, data: dict):
@@ -165,7 +189,7 @@ class SubmissionMetadata:
         :raises json.JSONDecodeError: if failed to read the metadata.json file
         """
         try:
-            with open(file_path, "r", encoding="utf-8") as jsonfile:
+            with open(file_path, encoding="utf-8") as jsonfile:
                 metadata = json.load(jsonfile)
                 return metadata
         except json.JSONDecodeError as e:
@@ -182,11 +206,13 @@ class SubmissionMetadata:
         try:
             jsonschema.validate(self.content, schema=schema)
         except jsonschema.exceptions.ValidationError as e:
-            self.__log.error("Invalid JSON schema in metadata file '%s'", self.file_path)
+            self.__log.error(
+                "Invalid JSON schema in metadata file '%s'", self.file_path
+            )
             raise e
 
     @property
-    def files(self) -> Dict[Path, SubmissionFileMetadata]:
+    def files(self) -> dict[Path, SubmissionFileMetadata]:
         """
         The files liked in the metadata.
 
@@ -222,7 +248,9 @@ class SubmissionMetadata:
                         file_metadata = SubmissionFileMetadata.from_json_dict(file_data)
 
                         # check if file is already registered
-                        if other_metadata := submission_files.get(file_metadata.filePath):
+                        if other_metadata := submission_files.get(
+                            file_metadata.filePath
+                        ):
                             # check if metadata matches
                             if file_metadata != other_metadata:
                                 yield f"{file_metadata.filePath}: Different metadata for the same path observed!"
@@ -255,7 +283,7 @@ class Submission:
         self.metadata = SubmissionMetadata(self.metadata_dir / "metadata.json")
 
     @property
-    def files(self) -> Dict[Path, SubmissionFileMetadata]:
+    def files(self) -> dict[Path, SubmissionFileMetadata]:
         """
         The files liked in the metadata.
 
@@ -275,12 +303,13 @@ class Submission:
 
         :return: Generator of errors
         """
-        progress_logger = FileProgressLogger(
-            log_file_path=progress_log_file
-        )
+        progress_logger = FileProgressLogger(log_file_path=progress_log_file)
         # cleanup log file and keep only files listed here
         progress_logger.cleanup(
-            keep=[(file_path, file_metadata) for file_path, file_metadata in self.files.items()]
+            keep=[
+                (file_path, file_metadata)
+                for file_path, file_metadata in self.files.items()
+            ]
         )
         # fields:
         # - "errors": List[str]
@@ -299,7 +328,10 @@ class Submission:
                 # skip re-verification
                 continue
             else:
-                self.__log.debug("Validation for %s already passed, skipping...", str(local_file_path))
+                self.__log.debug(
+                    "Validation for %s already passed, skipping...",
+                    str(local_file_path),
+                )
 
                 # skip re-verification
                 continue
@@ -316,16 +348,16 @@ class Submission:
                 state={
                     "errors": errors,
                     "validation_passed": validation_passed,
-                }
+                },
             )
 
             yield from errors
 
     def encrypt(
-            self,
-            encrypted_files_dir: str | Path,
-            public_key_file_path: str | Path,
-            progress_log_file: str | Path
+        self,
+        encrypted_files_dir: str | Path,
+        public_key_file_path: str | Path,
+        progress_log_file: str | Path,
     ) -> EncryptedSubmission:
         """
         Encrypt this submission with a public key using Crypt4Gh
@@ -337,9 +369,7 @@ class Submission:
         """
         encrypted_files_dir = Path(encrypted_files_dir)
 
-        progress_logger = FileProgressLogger(
-            log_file_path=progress_log_file
-        )
+        progress_logger = FileProgressLogger(log_file_path=progress_log_file)
 
         try:
             public_keys = Crypt4GH.prepare_c4gh_keys(public_key_file_path)
@@ -351,22 +381,20 @@ class Submission:
             # encryption_successful = True
             logged_state = progress_logger.get_state(file_path, file_metadata)
 
-            if logged_state is None or not logged_state.get("encryption_successful", False):
+            if logged_state is None or not logged_state.get(
+                "encryption_successful", False
+            ):
                 self.__log.info("Encrypting file: %s", str(file_path))
-                encrypted_file_path = EncryptedSubmission.get_encrypted_file_path(file_path)
+                encrypted_file_path = EncryptedSubmission.get_encrypted_file_path(
+                    file_path
+                )
 
                 try:
                     Crypt4GH.encrypt_file(file_path, encrypted_file_path, public_keys)
 
-                    self.__log.info(
-                        f"Encryption complete for {str(file_path)}. "
-                    )
+                    self.__log.info(f"Encryption complete for {str(file_path)}. ")
                     progress_logger.set_state(
-                        file_path,
-                        file_metadata,
-                        state={
-                            "encryption_successful": True
-                        }
+                        file_path, file_metadata, state={"encryption_successful": True}
                     )
                 except Exception as e:
                     self.__log.error("Encryption failed for '%s'", str(file_path))
@@ -374,17 +402,16 @@ class Submission:
                     progress_logger.set_state(
                         file_path,
                         file_metadata,
-                        state={
-                            "encryption_successful": False,
-                            "error": str(e)
-                        }
+                        state={"encryption_successful": False, "error": str(e)},
                     )
 
                     raise e
 
         self.__log.info("File encryption completed.")
 
-        return EncryptedSubmission(metadata_dir=self.metadata_dir, encrypted_files_dir=encrypted_files_dir)
+        return EncryptedSubmission(
+            metadata_dir=self.metadata_dir, encrypted_files_dir=encrypted_files_dir
+        )
 
 
 class EncryptedSubmission:
@@ -400,7 +427,9 @@ class EncryptedSubmission:
     def encrypted_files(self):
         retval = {}
         for file_path, file_metadata in self.metadata.files.items():
-            encrypted_file_path = self.get_encrypted_file_path(self.encrypted_files_dir / file_path)
+            encrypted_file_path = self.get_encrypted_file_path(
+                self.encrypted_files_dir / file_path
+            )
 
             retval[encrypted_file_path] = file_metadata
 
@@ -456,30 +485,27 @@ class Worker:
 
         :raises SubmissionValidationError: if the validation fails
         """
-
-        self.__log.info('Starting metadata validation...')
+        self.__log.info("Starting metadata validation...")
         if errors := list(self.submission.metadata.validate()):
-            error_msg = "\n".join([
-                'Metadata validation failed! Errors:',
-                *errors
-            ])
+            error_msg = "\n".join(["Metadata validation failed! Errors:", *errors])
             self.__log.error(error_msg)
 
             raise SubmissionValidationError(error_msg)
         else:
-            self.__log.info('Metadata validation successful!')
+            self.__log.info("Metadata validation successful!")
 
-        self.__log.info('Starting checksum validation...')
-        if errors := list(self.submission.validate_checksums(progress_log_file=self.progress_file_checksum)):
-            error_msg = "\n".join([
-                'Checksum validation failed! Errors:',
-                *errors
-            ])
+        self.__log.info("Starting checksum validation...")
+        if errors := list(
+            self.submission.validate_checksums(
+                progress_log_file=self.progress_file_checksum
+            )
+        ):
+            error_msg = "\n".join(["Checksum validation failed! Errors:", *errors])
             self.__log.error(error_msg)
 
             raise SubmissionValidationError(error_msg)
         else:
-            self.__log.info('Checksum validation successful!')
+            self.__log.info("Checksum validation successful!")
 
         # TODO: validate FASTQ
 

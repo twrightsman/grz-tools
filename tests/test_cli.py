@@ -1,16 +1,16 @@
 import sys
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
-from unittest.mock import patch
 
 import grz_upload.cli
 
 
-@pytest.fixture(scope='session')
+@pytest.fixture(scope="session")
 def local_submission_dir(tmpdir_factory: pytest.TempdirFactory):
     """Create temporary folder for the session"""
-    datadir = tmpdir_factory.mktemp('submission')
+    datadir = tmpdir_factory.mktemp("submission")
     return datadir
 
 
@@ -22,10 +22,12 @@ def local_submission_dir_path(local_submission_dir) -> Path:
 def test_validate_submission(local_submission_dir_path, temp_config_file_path):
     testargs = [
         "validate",
-        "--submission_dir", str(local_submission_dir_path),
+        "--submission_dir",
+        str(local_submission_dir_path),
     ]
 
     from click.testing import CliRunner
+
     runner = CliRunner()
     result = runner.invoke(grz_upload.cli.cli, testargs, catch_exceptions=False)
 
@@ -39,9 +41,11 @@ def test_validate_submission(local_submission_dir_path, temp_config_file_path):
 def test_encrypt_submission(local_submission_dir_path, temp_config_file_path):
     testargs = [
         "encrypt",
-        "--submission_dir", str(local_submission_dir_path),
+        "--submission_dir",
+        str(local_submission_dir_path),
     ]
     from click.testing import CliRunner
+
     runner = CliRunner()
     result = runner.invoke(grz_upload.cli.cli, testargs, catch_exceptions=False)
 
@@ -54,9 +58,11 @@ def test_encrypt_submission(local_submission_dir_path, temp_config_file_path):
 def test_upload_submission(local_submission_dir_path, temp_config_file_path):
     testargs = [
         "upload",
-        "--submission_dir", str(local_submission_dir_path),
+        "--submission_dir",
+        str(local_submission_dir_path),
     ]
     from click.testing import CliRunner
+
     runner = CliRunner()
     result = runner.invoke(grz_upload.cli.cli, testargs, catch_exceptions=False)
 

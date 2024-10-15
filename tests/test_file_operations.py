@@ -4,9 +4,9 @@ from typing import Tuple
 import pytest
 
 from grz_upload.file_operations import (
+    Crypt4GH,
     calculate_md5,
     calculate_sha256,
-    Crypt4GH,
     is_relative_subdirectory,
 )
 
@@ -35,27 +35,26 @@ def test_prepare_c4gh_keys(crypt4gh_public_key_file_path: str):
     assert len(keys[0][1]) == 32
 
 
-@pytest.mark.parametrize("relative_path, root_directory, expected", [
-    # Valid subdirectory paths
-    ("root/directory/subdir/file.txt", "root/directory", True),
-    ("root/directory/subdir", "root/directory", True),
-    ("root/directory/another_subdir/file.txt", "root/directory", True),
-
-    # Target path is exactly the root directory
-    ("root/directory", "root/directory", True),
-
-    # Trying to escape root
-    ("root/directory/../file_outside.txt", "root/directory", False),
-    ("root/directory/../../outside/file.txt", "root/directory", False),
-
-    # Same as root with different formatting
-    ("root/directory/.", "root/directory", True),
-    ("root/directory/./subdir", "root/directory", True),
-
-    # Completely different path
-    ("/some/other/directory/file.txt", "/home/user/projects/root", False),
-    ("other/directory", "root/directory", False),
-])
+@pytest.mark.parametrize(
+    "relative_path, root_directory, expected",
+    [
+        # Valid subdirectory paths
+        ("root/directory/subdir/file.txt", "root/directory", True),
+        ("root/directory/subdir", "root/directory", True),
+        ("root/directory/another_subdir/file.txt", "root/directory", True),
+        # Target path is exactly the root directory
+        ("root/directory", "root/directory", True),
+        # Trying to escape root
+        ("root/directory/../file_outside.txt", "root/directory", False),
+        ("root/directory/../../outside/file.txt", "root/directory", False),
+        # Same as root with different formatting
+        ("root/directory/.", "root/directory", True),
+        ("root/directory/./subdir", "root/directory", True),
+        # Completely different path
+        ("/some/other/directory/file.txt", "/home/user/projects/root", False),
+        ("other/directory", "root/directory", False),
+    ],
+)
 def test_is_relative_subdirectory(relative_path, root_directory, expected):
     """
     Test the is_relative_subdirectory() function with various cases.
@@ -65,10 +64,10 @@ def test_is_relative_subdirectory(relative_path, root_directory, expected):
 
 
 def test_Crypt4GH_encrypt_file(
-        temp_small_file_path: str,
-        c4gh_public_keys,
-        crypt4gh_private_key_file_path,
-        tmp_path_factory
+    temp_small_file_path: str,
+    c4gh_public_keys,
+    crypt4gh_private_key_file_path,
+    tmp_path_factory,
 ):
     tmp_dir = tmp_path_factory.mktemp("crypt4gh")
 
@@ -82,7 +81,9 @@ def test_Crypt4GH_encrypt_file(
     Crypt4GH.decrypt_file(
         tmp_encrypted_file,
         tmp_decrypted_file,
-        private_key=[(0, private_key, None)]  # list of (method, privkey, recipient_pubkey=None)
+        private_key=[
+            (0, private_key, None)
+        ],  # list of (method, privkey, recipient_pubkey=None)
     )
 
     import filecmp

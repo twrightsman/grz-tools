@@ -3,12 +3,13 @@ Module: logging_setup
 
 This module provides functions for setting up logging configuration.
 """
+
 from __future__ import annotations
 
 import logging
-
 from pathlib import Path
-from grz_upload.constants import PACKAGE_ROOT, LOGGING_FORMAT, LOGGING_DATEFMT
+
+from grz_upload.constants import LOGGING_DATEFMT, LOGGING_FORMAT, PACKAGE_ROOT
 
 log = logging.getLogger(__name__)
 

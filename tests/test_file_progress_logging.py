@@ -13,7 +13,7 @@ from tests.conftest import temp_metadata_file_path
 
 @pytest.fixture(scope="function")
 def test_dir(tmpdir_factory: pytest.TempdirFactory):
-    datadir = tmpdir_factory.mktemp('test')
+    datadir = tmpdir_factory.mktemp("test")
     return datadir
 
 
@@ -25,14 +25,14 @@ def test_dir_path(test_dir) -> Path:
 @pytest.fixture
 def temp_log_file_path(test_dir_path) -> Path:
     """Fixture to create a temporary log file."""
-    temp_file = test_dir_path / 'log.mjson'
+    temp_file = test_dir_path / "log.mjson"
     return temp_file
 
 
 @pytest.fixture
 def temp_data_file_path(test_dir_path) -> Path:
     """Fixture to create a temporary file to track."""
-    temp_file = test_dir_path / 'data.txt'
+    temp_file = test_dir_path / "data.txt"
     with open(temp_file, "w") as fd:
         fd.write("asdf")
 
@@ -67,10 +67,10 @@ def logger(temp_log_file_path):
 
 
 def test_set_and_get_state(
-        logger: FileProgressLogger,
-        temp_data_file_path: Path,
-        temp_file_metadata_dict: Dict,
-        temp_data_file_metadata: SubmissionFileMetadata,
+    logger: FileProgressLogger,
+    temp_data_file_path: Path,
+    temp_file_metadata_dict: dict,
+    temp_data_file_metadata: SubmissionFileMetadata,
 ):
     """Test that setting and getting the state works."""
     # Set state for a file
@@ -78,7 +78,7 @@ def test_set_and_get_state(
     logger.set_state(
         file_path=temp_data_file_path,
         file_metadata=temp_file_metadata_dict,
-        state=state
+        state=state,
     )
 
     # Retrieve the state
@@ -86,41 +86,47 @@ def test_set_and_get_state(
     assert retrieved_state == state
 
 
-def test_get_state_file_not_tracked(logger: FileProgressLogger, temp_data_file_path: Path,
-                                    temp_data_file_metadata: SubmissionFileMetadata):
+def test_get_state_file_not_tracked(
+    logger: FileProgressLogger,
+    temp_data_file_path: Path,
+    temp_data_file_metadata: SubmissionFileMetadata,
+):
     """Test that get_state returns None for untracked files."""
     state = {"progress": 75, "status": "completed"}
     logger.set_state(
         file_path=temp_data_file_path,
         file_metadata=temp_data_file_metadata,
-        state=state
+        state=state,
     )
     # Retrieve the state
-    retrieved_state = logger.get_state(temp_data_file_path, file_metadata={
-        "filePath": "",
-        "fileType": "",
-        "fileChecksum": "",
-        "fileSizeInBytes": -1
-    })
+    retrieved_state = logger.get_state(
+        temp_data_file_path,
+        file_metadata={
+            "filePath": "",
+            "fileType": "",
+            "fileChecksum": "",
+            "fileSizeInBytes": -1,
+        },
+    )
     assert retrieved_state is None
 
 
 def test_persist_state_to_json(
-        logger,
-        temp_log_file_path,
-        temp_data_file_path,
-        temp_data_file_metadata,
+    logger,
+    temp_log_file_path,
+    temp_data_file_path,
+    temp_data_file_metadata,
 ):
     """Test that file state is persisted to json."""
     state = {"progress": 75, "status": "completed"}
     logger.set_state(
         file_path=temp_data_file_path,
         file_metadata=temp_data_file_metadata,
-        state=state
+        state=state,
     )
 
     # Check that the state was appended to the json file
-    with open(temp_log_file_path, "r") as f:
+    with open(temp_log_file_path) as f:
         entries = list(read_multiple_json(f))
         assert len(entries) == 1
         assert entries[0] == {
@@ -128,10 +134,7 @@ def test_persist_state_to_json(
             "modification_time": temp_data_file_path.stat().st_mtime,
             "size": temp_data_file_path.stat().st_size,
             "metadata": temp_data_file_metadata.to_json_dict(),
-            "state": {
-                "progress": 75,
-                "status": "completed"
-            }
+            "state": {"progress": 75, "status": "completed"},
         }
 
 
@@ -149,22 +152,21 @@ def test_get_index(mocker, logger, temp_data_file_path):
     assert index == (str(temp_data_file_path), 1234567890.0, 1234)
 
 
-def test_read_existing_log(temp_log_file_path, temp_data_file_path, temp_data_file_metadata):
+def test_read_existing_log(
+    temp_log_file_path, temp_data_file_path, temp_data_file_metadata
+):
     """Test that file states are correctly read from an existing json log."""
     # Manually write a row to the log file
-    with open(temp_log_file_path, "w", newline='') as fd:
+    with open(temp_log_file_path, "w", newline="") as fd:
         json.dump(
             {
                 "file_path": str(temp_data_file_path),
                 "modification_time": temp_data_file_path.stat().st_mtime,
                 "size": temp_data_file_path.stat().st_size,
                 "metadata": temp_data_file_metadata.to_json_dict(),
-                "state": {
-                    "progress": 0,
-                    "status": "started"
-                }
+                "state": {"progress": 0, "status": "started"},
             },
-            fd
+            fd,
         )
         fd.write("\n")
         json.dump(
@@ -173,12 +175,9 @@ def test_read_existing_log(temp_log_file_path, temp_data_file_path, temp_data_fi
                 "modification_time": temp_data_file_path.stat().st_mtime,
                 "size": temp_data_file_path.stat().st_size,
                 "metadata": temp_data_file_metadata.to_json_dict(),
-                "state": {
-                    "progress": 25,
-                    "status": "in-progress"
-                }
+                "state": {"progress": 25, "status": "in-progress"},
             },
-            fd
+            fd,
         )
         fd.write("\n")
 
@@ -186,14 +185,9 @@ def test_read_existing_log(temp_log_file_path, temp_data_file_path, temp_data_fi
     logger = FileProgressLogger(temp_log_file_path)
 
     # cleanup
-    logger.cleanup(keep=[
-        (temp_data_file_path, temp_data_file_metadata)
-    ])
+    logger.cleanup(keep=[(temp_data_file_path, temp_data_file_metadata)])
 
     # Verify the state is read correctly
     retrieved_state = logger.get_state(temp_data_file_path, temp_data_file_metadata)
     assert retrieved_state is not None
-    assert retrieved_state == {
-        "progress": 25,
-        "status": "in-progress"
-    }
+    assert retrieved_state == {"progress": 25, "status": "in-progress"}

@@ -25,21 +25,26 @@ from tqdm.auto import tqdm
 log = logging.getLogger(__name__)
 
 
-def calculate_sha256(file_path: str | Path, chunk_size=2 ** 16, progress=True) -> str:
-    '''
+def calculate_sha256(file_path: str | Path, chunk_size=2**16, progress=True) -> str:
+    """
     Calculate the sha256 value of a file in chunks
 
     :param file_path: path to the file
     :param chunk_size: Chunk size in bytes
     :param progress: Print progress
     :return: calculated sha256 value of file_path
-    '''
+    """
     file_path = Path(file_path)
     total_size = getsize(file_path)
     sha256_hash = hashlib.sha256()
-    with open(file_path, 'rb') as f:
+    with open(file_path, "rb") as f:
         if progress and (total_size > chunk_size):
-            with tqdm(total=total_size, unit='B', unit_scale=True, desc=f"Calculating SHA256 {file_path.name}") as pbar:
+            with tqdm(
+                total=total_size,
+                unit="B",
+                unit_scale=True,
+                desc=f"Calculating SHA256 {file_path.name}",
+            ) as pbar:
                 while chunk := f.read(chunk_size):
                     sha256_hash.update(chunk)
                     pbar.update(len(chunk))
@@ -49,7 +54,7 @@ def calculate_sha256(file_path: str | Path, chunk_size=2 ** 16, progress=True) -
     return sha256_hash.hexdigest()
 
 
-def calculate_md5(file_path, chunk_size=2 ** 16, progress=True) -> str:
+def calculate_md5(file_path, chunk_size=2**16, progress=True) -> str:
     """
     Calculate the md5 value of a file in chunks
 
@@ -62,7 +67,9 @@ def calculate_md5(file_path, chunk_size=2 ** 16, progress=True) -> str:
     md5_hash = hashlib.md5()
     with open(file_path, "rb") as f:
         if progress and (total_size > chunk_size):
-            with tqdm(total=total_size, unit="B", unit_scale=True, desc="Calculating MD5") as pbar:
+            with tqdm(
+                total=total_size, unit="B", unit_scale=True, desc="Calculating MD5"
+            ) as pbar:
                 while chunk := f.read(chunk_size):
                     md5_hash.update(chunk)
                     pbar.update(len(chunk))
@@ -102,7 +109,9 @@ def read_multiple_json(input: TextIO, buffer_size=65536, max_buffer_size=1342177
         raise ValueError("Remaining data is not empty. Is there invalid JSON?")
 
 
-def is_relative_subdirectory(relative_path: str | Path, root_directory: str | Path) -> bool:
+def is_relative_subdirectory(
+    relative_path: str | Path, root_directory: str | Path
+) -> bool:
     """
     Check if the target path is a subdirectory of the root path
     using os.path.commonpath() without checking the file system.
@@ -121,7 +130,7 @@ def is_relative_subdirectory(relative_path: str | Path, root_directory: str | Pa
     return common_path == root_directory
 
 
-class Crypt4GH(object):
+class Crypt4GH:
     Key = tuple[int, bytes, bytes]
 
     VERSION = 1
@@ -141,7 +150,11 @@ class Crypt4GH(object):
         return keys
 
     @staticmethod
-    def encrypt_file(input_path: str | Path, output_path: str | Path, public_keys: Tuple[Crypt4GH.Key]):
+    def encrypt_file(
+        input_path: str | Path,
+        output_path: str | Path,
+        public_keys: tuple[Crypt4GH.Key],
+    ):
         """
         Encrypt the file, properly handling the Crypt4GH header.
 
@@ -157,14 +170,17 @@ class Crypt4GH(object):
 
         total_size = getsize(input_path)
         with open(input_path, "rb") as in_fd, open(output_path, "wb") as out_fd:
-            with TqdmIOWrapper(in_fd, tqdm(
+            with TqdmIOWrapper(
+                in_fd,
+                tqdm(
                     total=total_size,
                     desc=f"Encrypting: '{input_path.name}'",
                     unit="B",
                     unit_scale=True,
                     # unit_divisor=1024,  # make use of standard units e.g. KB, MB, etc.
                     miniters=1,
-            )) as pbar_in_fd:
+                ),
+            ) as pbar_in_fd:
                 crypt4gh.lib.encrypt(
                     keys=public_keys,
                     infile=pbar_in_fd,
@@ -175,13 +191,15 @@ class Crypt4GH(object):
     def retrieve_private_key(seckey_path):
         seckeypath = os.path.expanduser(seckey_path)
         if not os.path.exists(seckeypath):
-            raise ValueError('Secret key not found')
+            raise ValueError("Secret key not found")
 
-        passphrase = os.getenv('C4GH_PASSPHRASE')
+        passphrase = os.getenv("C4GH_PASSPHRASE")
         if passphrase:
             passphrase_callback = lambda: passphrase
         else:
-            passphrase_callback = partial(getpass, prompt=f'Passphrase for {seckey_path}: ')
+            passphrase_callback = partial(
+                getpass, prompt=f"Passphrase for {seckey_path}: "
+            )
 
         return crypt4gh.keys.get_private_key(seckeypath, passphrase_callback)
 
@@ -189,14 +207,17 @@ class Crypt4GH(object):
     def decrypt_file(input_path, output_path, private_key):
         total_size = getsize(input_path)
         with open(input_path, "rb") as in_fd, open(output_path, "wb") as out_fd:
-            with TqdmIOWrapper(in_fd, tqdm(
+            with TqdmIOWrapper(
+                in_fd,
+                tqdm(
                     total=total_size,
                     desc=f"Decrypting: '{input_path.name}'",
                     unit="B",
                     unit_scale=True,
                     # unit_divisor=1024,  # make use of standard units e.g. KB, MB, etc.
                     miniters=1,
-            )) as pbar_in_fd:
+                ),
+            ) as pbar_in_fd:
                 crypt4gh.lib.decrypt(
                     keys=private_key,
                     infile=pbar_in_fd,
@@ -264,6 +285,7 @@ class TqdmIOWrapper(io.RawIOBase):
     def close(self):
         # Close the underlying binary IO object
         self.io_buf.close()
+
 
 # class HashLoggingWriter(io.RawIOBase):
 #     def __init__(self, binary_io: io.RawIOBase, hash_algorithm: str = 'sha256'):
