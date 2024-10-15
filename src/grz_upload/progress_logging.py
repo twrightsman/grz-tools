@@ -1,12 +1,12 @@
 from __future__ import annotations
-from typing import Dict, List, Tuple
 
+import copy
 import json
 from pathlib import Path
-import copy
+from typing import Dict, List, Tuple
 
-from grz_upload.file_operations import read_multiple_json
 import grz_upload.parser as parser
+from grz_upload.file_operations import read_multiple_json
 
 
 class FileProgressLogger:
@@ -15,13 +15,9 @@ class FileProgressLogger:
     and allows querying the state based on the file path and modification time.
     """
 
-    _index = {
-        "file_path": str,
-        "modification_time": float,
-        "size": int
-    }
+    _index = {"file_path": str, "modification_time": float, "size": int}
     # mapping of index -> (metadata, data)
-    _file_states: Dict[Tuple[str, float, int], Tuple[Dict, Dict | List]]
+    _file_states: dict[tuple[str, float, int], tuple[dict, dict | list]]
 
     def __init__(self, log_file_path: str | Path):
         """
@@ -44,10 +40,12 @@ class FileProgressLogger:
         """
         if self._file_path.exists():
             if self._file_path.is_file():
-                with open(self._file_path, "r") as fd:
+                with open(self._file_path) as fd:
                     for row_dict in read_multiple_json(fd):
                         # Get index and cast them to the correct types
-                        index = tuple(self._index[k](row_dict[k]) for k in self._index.keys())
+                        index = tuple(
+                            self._index[k](row_dict[k]) for k in self._index.keys()
+                        )
                         # Get metadata
                         metadata = row_dict["metadata"]
                         # Get state
@@ -57,14 +55,16 @@ class FileProgressLogger:
             else:
                 raise ValueError(f"Path is not a file: '{str(self._file_path)}'")
 
-    def cleanup(self, keep: List[Tuple[str | Path, Dict | parser.SubmissionFileMetadata]]):
+    def cleanup(
+        self, keep: list[tuple[str | Path, dict | parser.SubmissionFileMetadata]]
+    ):
         self._file_path.unlink(missing_ok=True)
         for file, file_metadata in keep:
             state = self.get_state(file, file_metadata)
             if state is not None:
                 self.set_state(file, file_metadata, self.get_state(file, file_metadata))
 
-    def _get_index(self, file_path: str | Path) -> Tuple[str, float, int]:
+    def _get_index(self, file_path: str | Path) -> tuple[str, float, int]:
         """
         Generates a unique index for a given file based on its name and modification time.
 
@@ -76,13 +76,14 @@ class FileProgressLogger:
         if file_path.is_file():
             return str(file_path), file_path.stat().st_mtime, file_path.stat().st_size
         else:
-
             return str(file_path), -1, -1  # catches files that do not exist
 
     # def get_index(self, file_path: Path, file_metadata: Dict) -> Tuple:
     #     return self._get_index(file_path, file_metadata)
 
-    def get_state(self, file_path: str | Path, file_metadata: Dict | parser.SubmissionFileMetadata) -> Dict | None:
+    def get_state(
+        self, file_path: str | Path, file_metadata: dict | parser.SubmissionFileMetadata
+    ) -> dict | None:
         """
         Retrieves the stored state of a file if it exists in the log.
 
@@ -102,13 +103,20 @@ class FileProgressLogger:
         # check if metadata matches
         if stored_metadata is not None:
             # convert stored_metadata to SubmissionFileMetadata
-            stored_metadata = parser.SubmissionFileMetadata.from_json_dict(stored_metadata)
+            stored_metadata = parser.SubmissionFileMetadata.from_json_dict(
+                stored_metadata
+            )
             if file_metadata == stored_metadata:
                 return copy.deepcopy(stored_data)
         # metadata mismatch -> no valid stored state -> return None
         return None
 
-    def set_state(self, file_path: str | Path, file_metadata: Dict | parser.SubmissionFileMetadata, state: Dict):
+    def set_state(
+        self,
+        file_path: str | Path,
+        file_metadata: dict | parser.SubmissionFileMetadata,
+        state: dict,
+    ):
         """
         Log the state of a file:
          - Update the in-memory state
@@ -129,15 +137,18 @@ class FileProgressLogger:
         self._file_states[index] = (file_metadata.to_json_dict(), state)
 
         # Persist state to JSON log file
-        with open(self._file_path, "a", newline='') as fd:
+        with open(self._file_path, "a", newline="") as fd:
             # Append the new state row to the log file
-            json.dump({
-                # index keys
-                **{k: v for k, v in zip(self._index.keys(), index)},
-                # state
-                "metadata": file_metadata.to_json_dict(),
-                "state": state,
-            }, fd)
+            json.dump(
+                {
+                    # index keys
+                    **{k: v for k, v in zip(self._index.keys(), index)},
+                    # state
+                    "metadata": file_metadata.to_json_dict(),
+                    "state": state,
+                },
+                fd,
+            )
             fd.write("\n")
 
     def num_entries(self) -> int:

@@ -1,14 +1,13 @@
 from __future__ import annotations
 
-import yaml
 import json
 import os  # noqa: D100
+from pathlib import Path
 from shutil import copyfile
 
 import numpy as np
 import pytest
-
-from pathlib import Path
+import yaml
 
 from grz_upload.file_operations import Crypt4GH
 
@@ -30,10 +29,10 @@ def crypt4gh_public_key_file_path():
     return Path(crypt4gh_public_key_file)
 
 
-@pytest.fixture(scope='session')
+@pytest.fixture(scope="session")
 def temp_data_dir(tmpdir_factory: pytest.TempdirFactory):
     """Create temporary folder for the session"""
-    datadir = tmpdir_factory.mktemp('data')
+    datadir = tmpdir_factory.mktemp("data")
     return datadir
 
 
@@ -66,7 +65,9 @@ def temp_small_file_sha256sum():
     return "78858035d88f0c66d27984789ddd8fa8a8fc633cf7689ac2b4b1e2e7b37ee3be"
 
 
-def create_large_file(content: str | bytes, output_file: str | Path, target_size: int) -> int:
+def create_large_file(
+    content: str | bytes, output_file: str | Path, target_size: int
+) -> int:
     """
     Write some content repeatedly to a file until some target size is reached.
 
@@ -77,7 +78,7 @@ def create_large_file(content: str | bytes, output_file: str | Path, target_size
     """
     # Initialize the size of the new file and open it for writing
     current_size = 0
-    with open(output_file, 'w') as outfile:
+    with open(output_file, "w") as outfile:
         while current_size < target_size:
             bytes_written = outfile.write(content)
             current_size += bytes_written
@@ -86,10 +87,10 @@ def create_large_file(content: str | bytes, output_file: str | Path, target_size
 
 @pytest.fixture
 def temp_large_file_path(temp_data_dir_path) -> Path:
-    temp_large_file_path = temp_data_dir_path / 'temp_large_input_file.txt'
+    temp_large_file_path = temp_data_dir_path / "temp_large_input_file.txt"
     target_size = 1024 * 1024 * 6  # create 5MB file, multiupload limit is 5MB
 
-    with open(small_file_input_path, "r") as fd:
+    with open(small_file_input_path) as fd:
         content = fd.read()
 
     create_large_file(content, temp_large_file_path, target_size)
@@ -105,17 +106,17 @@ def generate_random_fastq(file_path: str | Path, target_size: int) -> int:
     :param target_size: Target size in bytes.
     :return: Actual bytes written
     """
-    nucleotides = np.array(['A', 'T', 'C', 'G'])
+    nucleotides = np.array(["A", "T", "C", "G"])
     quality_scores = np.array(list("!\"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHI"))
     bases_per_read = 100  # Length of each read
 
-    with open(file_path, 'w') as fastq_file:
+    with open(file_path, "w") as fastq_file:
         total_bytes_written = 0
 
         while total_bytes_written < target_size:
             # Generate a random sequence of nucleotides using numpy
-            seq = ''.join(np.random.choice(nucleotides, bases_per_read))
-            qual = ''.join(np.random.choice(quality_scores, bases_per_read))
+            seq = "".join(np.random.choice(nucleotides, bases_per_read))
+            qual = "".join(np.random.choice(quality_scores, bases_per_read))
 
             # FASTQ entry format
             entry = f"@SEQ_ID_{np.random.randint(1, 10 ** 6)}\n{seq}\n+\n{qual}\n"
@@ -173,14 +174,16 @@ def temp_fastq_file_sha256sum(temp_fastq_file_path):
 
 @pytest.fixture
 def temp_metadata_file_path(temp_data_dir_path, temp_large_file_path) -> Path:
-    with open(metadata_path, "r") as fd:
+    with open(metadata_path) as fd:
         metadata = json.load(fd)
 
     # insert large file
-    metadata["Donors"][0]["labData"][0]["sequenceData"][0]["files"][0]["filepath"] = str(temp_large_file_path)
+    metadata["Donors"][0]["labData"][0]["sequenceData"][0]["files"][0]["filepath"] = (
+        str(temp_large_file_path)
+    )
 
     metadata_file_path = temp_data_dir_path / "metadata.json"
-    with open(metadata_file_path, 'w') as fd:
+    with open(metadata_file_path, "w") as fd:
         json.dump(metadata, fd)
 
     return metadata_file_path
@@ -190,17 +193,17 @@ def temp_metadata_file_path(temp_data_dir_path, temp_large_file_path) -> Path:
 def config_content(crypt4gh_public_key_file_path):
     return {
         "public_key_path": str(crypt4gh_public_key_file_path),
-        "s3_url": '',
-        "s3_bucket": 'testing',
-        "s3_access_key": 'testing',
-        "s3_secret": 'testing',
+        "s3_url": "",
+        "s3_bucket": "testing",
+        "s3_access_key": "testing",
+        "s3_secret": "testing",
     }
 
 
 @pytest.fixture
 def temp_config_file_path(config_content, temp_data_dir_path) -> Path:
     config_file = temp_data_dir_path / "config.yaml"
-    with open(config_file, 'w') as fd:
+    with open(config_file, "w") as fd:
         yaml.dump(config_content, fd)
     return config_file
 

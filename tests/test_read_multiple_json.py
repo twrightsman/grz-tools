@@ -1,4 +1,5 @@
 import io
+
 import pytest
 
 from grz_upload.file_operations import read_multiple_json
@@ -6,9 +7,9 @@ from grz_upload.file_operations import read_multiple_json
 
 # Basic JSON objects (single-line JSON objects)
 def test_read_multiple_json_basic():
-    json_data = '''{"name": "Alice", "age": 30}
+    json_data = """{"name": "Alice", "age": 30}
                    {"name": "Bob", "age": 25}
-                   {"name": "Charlie", "age": 35}'''
+                   {"name": "Charlie", "age": 35}"""
     input_stream = io.StringIO(json_data)
 
     result = list(read_multiple_json(input_stream))
@@ -22,7 +23,7 @@ def test_read_multiple_json_basic():
 
 # Basic JSON objects without white spaces
 def test_read_multiple_json_nowhitespace():
-    json_data = '''{"name": "Alice", "age": 30}{"name": "Bob", "age": 25}{"name": "Charlie", "age": 35}'''
+    json_data = """{"name": "Alice", "age": 30}{"name": "Bob", "age": 25}{"name": "Charlie", "age": 35}"""
     input_stream = io.StringIO(json_data)
 
     result = list(read_multiple_json(input_stream))
@@ -36,29 +37,26 @@ def test_read_multiple_json_nowhitespace():
 
 # Multiline JSON objects (JSON objects span multiple lines)
 def test_read_multiple_json_multiline():
-    json_data = '''{
+    json_data = """{
                     "name": "Alice",
                     "age": 30
                    }
                    {
                     "name": "Bob",
                     "age": 25
-                   }'''
+                   }"""
     input_stream = io.StringIO(json_data)
 
     result = list(read_multiple_json(input_stream))
 
-    assert result == [
-        {"name": "Alice", "age": 30},
-        {"name": "Bob", "age": 25}
-    ]
+    assert result == [{"name": "Alice", "age": 30}, {"name": "Bob", "age": 25}]
 
 
 # JSON objects that span across chunks (larger buffer)
 def test_read_multiple_json_large_buffer():
-    json_data = '''{"name": "Alice", "age": 30}
+    json_data = """{"name": "Alice", "age": 30}
                    {"name": "Bob", "age": 25}
-                   {"name": "Charlie", "age": 35}'''
+                   {"name": "Charlie", "age": 35}"""
     input_stream = io.StringIO(json_data)
 
     # Simulate reading in smaller buffer chunks to ensure that multiple reads work properly
@@ -67,16 +65,16 @@ def test_read_multiple_json_large_buffer():
     assert result == [
         {"name": "Alice", "age": 30},
         {"name": "Bob", "age": 25},
-        {"name": "Charlie", "age": 35}
+        {"name": "Charlie", "age": 35},
     ]
 
 
 # Incomplete JSON objects (incomplete at the end)
 def test_read_multiple_json_incomplete():
-    json_data = '''{"name": "Alice", "age": 30}
+    json_data = """{"name": "Alice", "age": 30}
                    {"name": "Bob", "age": 25}
                    {"name": "Charlie", "age": 35
-                   '''
+                   """
     input_stream = io.StringIO(json_data)
 
     with pytest.raises(ValueError):
@@ -96,7 +94,7 @@ def test_read_multiple_json_empty():
 
 # Invalid JSON (no valid objects)
 def test_read_multiple_json_invalid():
-    json_data = '''invalid data'''
+    json_data = """invalid data"""
     input_stream = io.StringIO(json_data)
 
     with pytest.raises(ValueError):
@@ -105,9 +103,9 @@ def test_read_multiple_json_invalid():
 
 # Mixed valid and invalid JSON objects
 def test_read_multiple_json_mixed_valid_invalid():
-    json_data = '''{"name": "Alice", "age": 30}
+    json_data = """{"name": "Alice", "age": 30}
                    invalid json here
-                   {"name": "Bob", "age": 25}'''
+                   {"name": "Bob", "age": 25}"""
     input_stream = io.StringIO(json_data)
 
     with pytest.raises(ValueError):

@@ -1,5 +1,6 @@
-from grz_upload.parser import EncryptedSubmission, SubmissionMetadata
 from pathlib import Path
+
+from grz_upload.parser import EncryptedSubmission, SubmissionMetadata
 
 
 def test_SubmissionMetadata(temp_metadata_file_path):
@@ -10,6 +11,7 @@ def test_SubmissionMetadata(temp_metadata_file_path):
 
     assert len(submission_metadata.files) > 0
 
+
 def test_EncryptedSubmission():
     input_path = "/submission/files/a.fastq"
 
@@ -18,6 +20,7 @@ def test_EncryptedSubmission():
         assert enc_path == Path(input_path + ".c4gh")
         enc_path = EncryptedSubmission.get_encryption_header_path(input_path)
         assert enc_path == Path(input_path + ".c4gh_header")
+
 
 # TODO: test encrypt submission
 # TODO: test upload submission

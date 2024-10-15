@@ -23,7 +23,6 @@ class UploadError(Exception):
 
 
 class UploadWorker(metaclass=abc.ABCMeta):
-
     def upload(self, encrypted_submission: EncryptedSubmission, submission_id: str):
         for local_file_path, file_info in encrypted_submission.encrypted_files.items():
             relative_file_path = file_info["relative_file_path"]
@@ -32,14 +31,18 @@ class UploadWorker(metaclass=abc.ABCMeta):
             try:
                 self.upload_file(local_file_path, s3_object_id)
             except Exception as e:
-                raise UploadError(f"Failed to upload {local_file_path} (object id: {s3_object_id})") from e
+                raise UploadError(
+                    f"Failed to upload {local_file_path} (object id: {s3_object_id})"
+                ) from e
 
         # upload the metadata file
         s3_object_id = Path(submission_id) / "metadata" / "metadata.json"
         try:
             self.upload_file(encrypted_submission.metadata.file_path, s3_object_id)
         except Exception as e:
-            raise UploadError(f"Failed to upload metadata: {local_file_path} (object id: {s3_object_id})") from e
+            raise UploadError(
+                f"Failed to upload metadata: {local_file_path} (object id: {s3_object_id})"
+            ) from e
 
     @abc.abstractmethod
     def upload_file(self, local_file_path: str | Path, s3_object_id: str):
@@ -52,7 +55,7 @@ class S3BotoUploadWorker(UploadWorker):
     MULTIPART_CHUNK_SIZE = 200 * 1024 * 1024  # 200 MB
     MAX_SINGLEPART_UPLOAD_SIZE = 5 * 1024 * 1024  # 5 MB
 
-    def __init__(self, s3_settings: Dict[str, str], status_file_path: str | Path):
+    def __init__(self, s3_settings: dict[str, str], status_file_path: str | Path):
         """
         An upload manager for S3 storage
 
@@ -86,26 +89,27 @@ class S3BotoUploadWorker(UploadWorker):
         # configure proxies if proxy_url is defined
         proxy_url = empty_str_to_none(self._s3_settings.get("s3_session_token", None))
         if proxy_url is not None:
-            config = boto3_config(
-                proxies={
-                    'http': proxy_url,
-                    'https': proxy_url
-                }
-            )
+            config = boto3_config(proxies={"http": proxy_url, "https": proxy_url})
         else:
             config = None
 
         # Initialize S3 client for uploading
         self._s3_client: boto3.session.Session.client = boto3_client(
-            service_name='s3',
+            service_name="s3",
             region_name=empty_str_to_none(self._s3_settings.get("region_name", None)),
             api_version=empty_str_to_none(self._s3_settings.get("api_version", None)),
             use_ssl=empty_str_to_none(self._s3_settings.get("use_ssl", None)),
             endpoint_url=empty_str_to_none(self._s3_settings.get("s3_url", None)),
-            aws_access_key_id=empty_str_to_none(self._s3_settings.get("s3_access_key", None)),
-            aws_secret_access_key=empty_str_to_none(self._s3_settings.get("s3_secret", None)),
-            aws_session_token=empty_str_to_none(self._s3_settings.get("s3_session_token", None)),
-            config=config
+            aws_access_key_id=empty_str_to_none(
+                self._s3_settings.get("s3_access_key", None)
+            ),
+            aws_secret_access_key=empty_str_to_none(
+                self._s3_settings.get("s3_secret", None)
+            ),
+            aws_session_token=empty_str_to_none(
+                self._s3_settings.get("s3_session_token", None)
+            ),
+            config=config,
         )
 
     # def show_information(self):
@@ -172,7 +176,9 @@ class S3BotoUploadWorker(UploadWorker):
             for i in format_exc().split("\n"):
                 log.error(i)
             self._s3_client.abort_multipart_upload(
-                Bucket=self._s3_settings["s3_bucket"], Key=s3_object_id, UploadId=upload_id
+                Bucket=self._s3_settings["s3_bucket"],
+                Key=s3_object_id,
+                UploadId=upload_id,
             )
             raise e
 
