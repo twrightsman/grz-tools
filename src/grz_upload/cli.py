@@ -14,8 +14,10 @@ import click
 """ package modules """
 from grz_upload.logging_setup import add_filelogger
 from grz_upload.parser import Worker
+from grz_upload.constants import PACKAGE_ROOT
 
-log = logging.getLogger(__name__)
+# replace __MAIN__ with correct module name
+log = logging.getLogger(PACKAGE_ROOT + ".cli")
 
 
 class OrderedGroup(click.Group):
@@ -42,14 +44,19 @@ def cli(log_file: str = None, log_level: str = "INFO"):
                        DEBUG, INFO, WARNING, ERROR, CRITICAL.
     """
     if log_file:
-        add_filelogger(log_file, log_level)  # Add file logger
-    else:
-        logging.basicConfig(
-            level=log_level.upper(),
-            format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-        )
+        add_filelogger(log_file, log_level.upper(), )  # Add file logger
 
-    logging.getLogger(__name__).info("Logging setup complete.")
+    # show only time and log level in STDOUT
+    logging.basicConfig(
+        format="%(asctime)s - %(levelname)s - %(message)s",
+    )
+
+    # set the log level for this package
+    logging.getLogger(PACKAGE_ROOT).setLevel(
+        log_level.upper()
+    )
+
+    log.debug("Logging setup complete.")
 
 
 @cli.command()

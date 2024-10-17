@@ -14,7 +14,7 @@ from grz_upload.constants import LOGGING_DATEFMT, LOGGING_FORMAT, PACKAGE_ROOT
 log = logging.getLogger(__name__)
 
 
-def add_filelogger(file_path: str | Path = None, level: str = "INFO") -> None:
+def add_filelogger(file_path: str | Path = None, level: str = "INFO", logger: str = PACKAGE_ROOT) -> None:
     """
     Add file logging for the specified package.
 
@@ -27,8 +27,9 @@ def add_filelogger(file_path: str | Path = None, level: str = "INFO") -> None:
                       a default path will be used.
     :param level: Optional; the logging level. Default is 'INFO'.
                   Must be a valid logging level name (e.g., 'DEBUG', 'INFO').
+    :param logger:
     """
-    package_logger = logging.getLogger(PACKAGE_ROOT)
+    logger = logging.getLogger(logger)
 
     if file_path is None:
         default_log_dir = Path.home() / "logs"
@@ -42,10 +43,10 @@ def add_filelogger(file_path: str | Path = None, level: str = "INFO") -> None:
         fh = logging.FileHandler(file_path)
         fh.setLevel(level.upper())
         fh.setFormatter(logging.Formatter(LOGGING_FORMAT, LOGGING_DATEFMT))
-        package_logger.addHandler(fh)
+        logger.addHandler(fh)
         log.info(
             "File logger added for %s at %s with level %s.",
-            package_logger.name,
+            logger.name,
             file_path,
             level.upper(),
         )
