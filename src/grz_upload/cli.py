@@ -145,7 +145,7 @@ def validate(submission_dir: str, working_dir: str):
 #     required=False,
 #     help="public crypt4gh key of the GRZ",
 # )
-def encrypt(submission_dir, working_dir, config_file, pubkey_grz):
+def encrypt(submission_dir, working_dir, config_file):
     """
     Prepares a submission using the provided filepath, metafile, and public key.
     """

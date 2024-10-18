@@ -58,8 +58,8 @@ class SubmissionFileMetadata:
         # check if file extension is correct
         if self.fileType == "fastq":
             if not any(
-                str(self.filePath).endswith(suffix)
-                for suffix in self._VALID_FASTQ_FILE_EXTENSIONS
+                    str(self.filePath).endswith(suffix)
+                    for suffix in self._VALID_FASTQ_FILE_EXTENSIONS
             ):
                 yield (
                     f"{str(self.filePath)}: Unsupported FASTQ file extensions! "
@@ -69,8 +69,8 @@ class SubmissionFileMetadata:
             yield f"{str(self.filePath)}: Unsupported BAM file extensions! Must end with '.bam'"
         elif self.fileType == "bed" and not str(self.filePath).endswith(".bed"):
             if not any(
-                str(self.filePath).endswith(suffix)
-                for suffix in self._VALID_BED_FILE_EXTENSIONS
+                    str(self.filePath).endswith(suffix)
+                    for suffix in self._VALID_BED_FILE_EXTENSIONS
             ):
                 yield (
                     f"{str(self.filePath)}: Unsupported BED file extensions! "
@@ -78,8 +78,8 @@ class SubmissionFileMetadata:
                 )
         elif self.fileType == "vcf":
             if not any(
-                str(self.filePath).endswith(suffix)
-                for suffix in self._VALID_VCF_FILE_EXTENSIONS
+                    str(self.filePath).endswith(suffix)
+                    for suffix in self._VALID_VCF_FILE_EXTENSIONS
             ):
                 yield (
                     f"{str(self.filePath)}: Unsupported VCF file extensions! "
@@ -249,7 +249,7 @@ class SubmissionMetadata:
 
                         # check if file is already registered
                         if other_metadata := submission_files.get(
-                            file_metadata.filePath
+                                file_metadata.filePath
                         ):
                             # check if metadata matches
                             if file_metadata != other_metadata:
@@ -354,10 +354,10 @@ class Submission:
             yield from errors
 
     def encrypt(
-        self,
-        encrypted_files_dir: str | Path,
-        public_key_file_path: str | Path,
-        progress_log_file: str | Path,
+            self,
+            encrypted_files_dir: str | Path,
+            public_key_file_path: str | Path,
+            progress_log_file: str | Path,
     ) -> EncryptedSubmission:
         """
         Encrypt this submission with a public key using Crypt4Gh
@@ -381,13 +381,16 @@ class Submission:
             # encryption_successful = True
             logged_state = progress_logger.get_state(file_path, file_metadata)
 
-            if logged_state is None or not logged_state.get(
-                "encryption_successful", False
+            encrypted_file_path = encrypted_files_dir / EncryptedSubmission.get_encrypted_file_path(
+                file_path
+            )
+
+            if (
+                    (logged_state is None)
+                    or not logged_state.get("encryption_successful", False)
+                    or not encrypted_file_path.is_file()
             ):
-                self.__log.info("Encrypting file: %s", str(file_path))
-                encrypted_file_path = EncryptedSubmission.get_encrypted_file_path(
-                    file_path
-                )
+                self.__log.info("Encrypting file: '%s' -> '%s'", str(file_path), str(encrypted_file_path))
 
                 try:
                     Crypt4GH.encrypt_file(file_path, encrypted_file_path, public_keys)
@@ -406,6 +409,8 @@ class Submission:
                     )
 
                     raise e
+            else:
+                self.__log.info("File '%s' already encrypted in '%s'", str(file_path), str(encrypted_file_path))
 
         self.__log.info("File encryption completed.")
 
@@ -496,9 +501,9 @@ class Worker:
 
         self.__log.info("Starting checksum validation...")
         if errors := list(
-            self.submission.validate_checksums(
-                progress_log_file=self.progress_file_checksum
-            )
+                self.submission.validate_checksums(
+                    progress_log_file=self.progress_file_checksum
+                )
         ):
             error_msg = "\n".join(["Checksum validation failed! Errors:", *errors])
             self.__log.error(error_msg)
