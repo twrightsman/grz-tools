@@ -1,14 +1,12 @@
 import hashlib
 import json
 from pathlib import Path
-from typing import Dict
 
 import pytest
 
 from grz_upload.file_operations import read_multiple_json
 from grz_upload.parser import SubmissionFileMetadata
 from grz_upload.progress_logging import FileProgressLogger
-from tests.conftest import temp_metadata_file_path
 
 
 @pytest.fixture(scope="function")

@@ -2,10 +2,10 @@ from __future__ import annotations
 
 import copy
 import json
+from os import PathLike
 from pathlib import Path
-from typing import Dict, List, Tuple
 
-import grz_upload.parser as parser
+from grz_upload import parser
 from grz_upload.file_operations import read_multiple_json
 
 
@@ -19,7 +19,7 @@ class FileProgressLogger:
     # mapping of index -> (metadata, data)
     _file_states: dict[tuple[str, float, int], tuple[dict, dict | list]]
 
-    def __init__(self, log_file_path: str | Path):
+    def __init__(self, log_file_path: str | PathLike):
         """
         Initializes the FileProgressLogger instance.
 
@@ -43,9 +43,7 @@ class FileProgressLogger:
                 with open(self._file_path) as fd:
                     for row_dict in read_multiple_json(fd):
                         # Get index and cast them to the correct types
-                        index = tuple(
-                            self._index[k](row_dict[k]) for k in self._index.keys()
-                        )
+                        index = tuple(self._index[k](row_dict[k]) for k in self._index)
                         # Get metadata
                         metadata = row_dict["metadata"]
                         # Get state
@@ -56,7 +54,7 @@ class FileProgressLogger:
                 raise ValueError(f"Path is not a file: '{str(self._file_path)}'")
 
     def cleanup(
-        self, keep: list[tuple[str | Path, dict | parser.SubmissionFileMetadata]]
+        self, keep: list[tuple[PathLike, dict | parser.SubmissionFileMetadata]]
     ):
         self._file_path.unlink(missing_ok=True)
         for file, file_metadata in keep:
@@ -64,7 +62,7 @@ class FileProgressLogger:
             if state is not None:
                 self.set_state(file, file_metadata, self.get_state(file, file_metadata))
 
-    def _get_index(self, file_path: str | Path) -> tuple[str, float, int]:
+    def _get_index(self, file_path: str | PathLike) -> tuple[str, float, int]:
         """
         Generates a unique index for a given file based on its name and modification time.
 
@@ -78,11 +76,13 @@ class FileProgressLogger:
         else:
             return str(file_path), -1, -1  # catches files that do not exist
 
-    # def get_index(self, file_path: Path, file_metadata: Dict) -> Tuple:
+    # def get_index(self, file_path: Path, file_metadata: Dict) -> tuple:
     #     return self._get_index(file_path, file_metadata)
 
     def get_state(
-        self, file_path: str | Path, file_metadata: dict | parser.SubmissionFileMetadata
+        self,
+        file_path: str | PathLike,
+        file_metadata: dict | parser.SubmissionFileMetadata,
     ) -> dict | None:
         """
         Retrieves the stored state of a file if it exists in the log.
@@ -113,7 +113,7 @@ class FileProgressLogger:
 
     def set_state(
         self,
-        file_path: str | Path,
+        file_path: str | PathLike,
         file_metadata: dict | parser.SubmissionFileMetadata,
         state: dict,
     ):
@@ -142,7 +142,7 @@ class FileProgressLogger:
             json.dump(
                 {
                     # index keys
-                    **{k: v for k, v in zip(self._index.keys(), index)},
+                    **{k: v for k, v in zip(self._index.keys(), index, strict=True)},
                     # state
                     "metadata": file_metadata.to_json_dict(),
                     "state": state,

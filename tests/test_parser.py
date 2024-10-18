@@ -3,7 +3,7 @@ from pathlib import Path
 from grz_upload.parser import EncryptedSubmission, SubmissionMetadata
 
 
-def test_SubmissionMetadata(temp_metadata_file_path):
+def test_submission_metadata(temp_metadata_file_path):
     submission_metadata = SubmissionMetadata(temp_metadata_file_path)
 
     errors = list(submission_metadata.validate())
@@ -12,7 +12,7 @@ def test_SubmissionMetadata(temp_metadata_file_path):
     assert len(submission_metadata.files) > 0
 
 
-def test_EncryptedSubmission():
+def test_encrypted_submission():
     input_path = "/submission/files/a.fastq"
 
     for i in (input_path, Path(input_path)):

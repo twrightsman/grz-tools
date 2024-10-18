@@ -1,3 +1,5 @@
+"""Constants for logging configuration, JSON schema validation, and other settings."""
+
 import json
 
 PACKAGE_ROOT = "grz_upload"
@@ -36,5 +38,5 @@ LOGGING_CONFIG = {
     },
 }
 
-with open("resources/grz-schema.json", "r") as fd:
+with open("resources/grz-schema.json") as fd:
     GRZ_METADATA_JSONSCHEMA = json.load(fd)

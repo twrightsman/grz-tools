@@ -3,14 +3,15 @@ from __future__ import annotations
 import abc
 import logging
 from hashlib import sha256
+from os import PathLike
 from os.path import getsize
 from pathlib import Path
 from traceback import format_exc
-from typing import Dict, override
+from typing import override
 
 import boto3
 from boto3 import client as boto3_client
-from botocore.config import Config as boto3_config
+from botocore.config import Config as Boto3Config
 from tqdm.auto import tqdm
 
 from grz_upload.parser import EncryptedSubmission
@@ -38,14 +39,14 @@ class UploadWorker(metaclass=abc.ABCMeta):
         # upload the metadata file
         s3_object_id = Path(submission_id) / "metadata" / "metadata.json"
         try:
-            self.upload_file(encrypted_submission.metadata.file_path, s3_object_id)
+            self.upload_file(encrypted_submission.metadata.file_path, str(s3_object_id))
         except Exception as e:
             raise UploadError(
-                f"Failed to upload metadata: {local_file_path} (object id: {s3_object_id})"
+                f"Failed to upload metadata: {encrypted_submission.metadata.file_path} (object id: {s3_object_id})"
             ) from e
 
     @abc.abstractmethod
-    def upload_file(self, local_file_path: str | Path, s3_object_id: str):
+    def upload_file(self, local_file_path: str | PathLike, s3_object_id: str):
         raise NotImplementedError()
 
 
@@ -55,7 +56,7 @@ class S3BotoUploadWorker(UploadWorker):
     MULTIPART_CHUNK_SIZE = 200 * 1024 * 1024  # 200 MB
     MAX_SINGLEPART_UPLOAD_SIZE = 5 * 1024 * 1024  # 5 MB
 
-    def __init__(self, s3_settings: dict[str, str], status_file_path: str | Path):
+    def __init__(self, s3_settings: dict[str, str], status_file_path: str | PathLike):
         """
         An upload manager for S3 storage
 
@@ -89,7 +90,7 @@ class S3BotoUploadWorker(UploadWorker):
         # configure proxies if proxy_url is defined
         proxy_url = empty_str_to_none(self._s3_settings.get("s3_session_token", None))
         if proxy_url is not None:
-            config = boto3_config(proxies={"http": proxy_url, "https": proxy_url})
+            config = Boto3Config(proxies={"http": proxy_url, "https": proxy_url})
         else:
             config = None
 
@@ -186,7 +187,7 @@ class S3BotoUploadWorker(UploadWorker):
         """
         Upload the file to S3.
 
-        :param file_location: pathlib.Path()
+        :param local_file: pathlib.Path()
         :param s3_object_id: string
         :return: sha256 values for original file
         """

@@ -12,9 +12,9 @@ from traceback import format_exc
 import click
 
 """ package modules """
+from grz_upload.constants import PACKAGE_ROOT
 from grz_upload.logging_setup import add_filelogger
 from grz_upload.parser import Worker
-from grz_upload.constants import PACKAGE_ROOT
 
 # replace __MAIN__ with correct module name
 log = logging.getLogger(PACKAGE_ROOT + ".cli")
@@ -35,7 +35,7 @@ class OrderedGroup(click.Group):
     type=click.Choice(["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]),
     help="Set the log level (default: INFO)",
 )
-def cli(log_file: str = None, log_level: str = "INFO"):
+def cli(log_file: str | None = None, log_level: str = "INFO"):
     """
     Command-line interface function for setting up logging.
 
@@ -44,7 +44,10 @@ def cli(log_file: str = None, log_level: str = "INFO"):
                        DEBUG, INFO, WARNING, ERROR, CRITICAL.
     """
     if log_file:
-        add_filelogger(log_file, log_level.upper(), )  # Add file logger
+        add_filelogger(
+            log_file,
+            log_level.upper(),
+        )  # Add file logger
 
     # show only time and log level in STDOUT
     logging.basicConfig(
@@ -52,9 +55,7 @@ def cli(log_file: str = None, log_level: str = "INFO"):
     )
 
     # set the log level for this package
-    logging.getLogger(PACKAGE_ROOT).setLevel(
-        log_level.upper()
-    )
+    logging.getLogger(PACKAGE_ROOT).setLevel(log_level.upper())
 
     log.debug("Logging setup complete.")
 
@@ -161,7 +162,7 @@ def encrypt(submission_dir, working_dir, config_file):
         worker_inst.encrypt(pubkey_path)
 
     except (KeyboardInterrupt, Exception) as e:
-        log.error(format_exc())
+        log.error("Error during encryption", exc_info=e)
 
     finally:
         log.info("Shutting Down - Live long and prosper")
@@ -218,11 +219,9 @@ def encrypt(submission_dir, working_dir, config_file):
 def upload(config, folderpath, use_s3cmd):
     """
     Uploads a submission file to s3 using the provided configuration.
-    Args:
-        config (str): The path to the configuration file.
-        pubkey_grz (str): The public key for authentication.
-    Returns:
-        None
+    :param config: The path to the configuration file.
+    :param folderpath: Path to a working directory where intermediate files can be stored
+    :param use_s3cmd: Whether to use s3cmd for the upload or builtin boto3
     """
     options = {"config_file": config, "folderpath": folderpath, "use_s3cmd": use_s3cmd}
 
@@ -233,8 +232,7 @@ def upload(config, folderpath, use_s3cmd):
         parser.upload()
 
     except (KeyboardInterrupt, Exception) as e:
-        log.error(format_exc())
-
+        log.error("Error during upload", exc_info=e)
     finally:
         log.info("Shutting Down - Live long and prosper")
         logging.shutdown()

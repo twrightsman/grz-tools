@@ -4,9 +4,9 @@ from pathlib import Path
 import boto3
 import pytest
 import yaml
-from build.lib.grz_upload.file_operations import calculate_sha256
 from moto import mock_aws
 
+from grz_upload.file_operations import calculate_sha256
 from grz_upload.upload import S3BotoUploadWorker
 
 

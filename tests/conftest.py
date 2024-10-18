@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 import json
-import os  # noqa: D100
+import os
+from os import PathLike
 from pathlib import Path
 from shutil import copyfile
 
@@ -41,7 +42,7 @@ def temp_data_dir_path(temp_data_dir) -> Path:
     return Path(temp_data_dir.strpath)
 
 
-def copy_file_to_tempdir(input_path: str | Path, datadir: str | Path) -> Path:
+def copy_file_to_tempdir(input_path: str | PathLike, datadir: str | PathLike) -> Path:
     filename = os.path.basename(input_path)
     target = Path(datadir) / filename
 
@@ -66,7 +67,7 @@ def temp_small_file_sha256sum():
 
 
 def create_large_file(
-    content: str | bytes, output_file: str | Path, target_size: int
+    content: str | bytes, output_file: str | PathLike, target_size: int
 ) -> int:
     """
     Write some content repeatedly to a file until some target size is reached.
@@ -98,7 +99,7 @@ def temp_large_file_path(temp_data_dir_path) -> Path:
     return temp_large_file_path
 
 
-def generate_random_fastq(file_path: str | Path, target_size: int) -> int:
+def generate_random_fastq(file_path: str | PathLike, target_size: int) -> int:
     """
     Create a random FASTQ file.
 

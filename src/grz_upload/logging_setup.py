@@ -7,6 +7,7 @@ This module provides functions for setting up logging configuration.
 from __future__ import annotations
 
 import logging
+from os import PathLike
 from pathlib import Path
 
 from grz_upload.constants import LOGGING_DATEFMT, LOGGING_FORMAT, PACKAGE_ROOT
@@ -14,7 +15,11 @@ from grz_upload.constants import LOGGING_DATEFMT, LOGGING_FORMAT, PACKAGE_ROOT
 log = logging.getLogger(__name__)
 
 
-def add_filelogger(file_path: str | Path = None, level: str = "INFO", logger: str = PACKAGE_ROOT) -> None:
+def add_filelogger(
+    file_path: str | PathLike | None = None,
+    level: str = "INFO",
+    logger: str = PACKAGE_ROOT,
+) -> None:
     """
     Add file logging for the specified package.
 

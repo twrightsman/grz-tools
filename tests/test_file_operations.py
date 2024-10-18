@@ -1,5 +1,4 @@
 from pathlib import Path
-from typing import Tuple
 
 import pytest
 
@@ -27,7 +26,7 @@ def test_calculate_md5(temp_small_file_path: str, temp_small_file_md5sum):
 
 def test_prepare_c4gh_keys(crypt4gh_public_key_file_path: str):
     keys = Crypt4GH.prepare_c4gh_keys(crypt4gh_public_key_file_path)
-    # single key in tupple
+    # single key in tuple
     assert len(keys) == 1
     # key method is set to 0
     assert keys[0][0] == 0
@@ -63,7 +62,7 @@ def test_is_relative_subdirectory(relative_path, root_directory, expected):
     assert result == expected
 
 
-def test_Crypt4GH_encrypt_file(
+def test_crypt4gh_encrypt_file(
     temp_small_file_path: str,
     c4gh_public_keys,
     crypt4gh_private_key_file_path,

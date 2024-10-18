@@ -7,9 +7,10 @@ import logging
 import os
 from functools import partial
 from getpass import getpass
+from os import PathLike
 from os.path import getsize
 from pathlib import Path
-from typing import TextIO, Tuple
+from typing import TextIO
 
 import crypt4gh.header
 import crypt4gh.keys
@@ -25,7 +26,7 @@ from tqdm.auto import tqdm
 log = logging.getLogger(__name__)
 
 
-def calculate_sha256(file_path: str | Path, chunk_size=2**16, progress=True) -> str:
+def calculate_sha256(file_path: str | PathLike, chunk_size=2**16, progress=True) -> str:
     """
     Calculate the sha256 value of a file in chunks
 
@@ -64,7 +65,7 @@ def calculate_md5(file_path, chunk_size=2**16, progress=True) -> str:
     :return: calculated md5 value of file_path
     """
     total_size = getsize(file_path)
-    md5_hash = hashlib.md5()
+    md5_hash = hashlib.md5()  # noqa: S324
     with open(file_path, "rb") as f:
         if progress and (total_size > chunk_size):
             with tqdm(
@@ -80,6 +81,12 @@ def calculate_md5(file_path, chunk_size=2**16, progress=True) -> str:
 
 
 def read_multiple_json(input: TextIO, buffer_size=65536, max_buffer_size=134217728):
+    """
+    Read multiple JSON objects from a text stream.
+    :param input:
+    :param buffer_size:
+    :param max_buffer_size:
+    """
     decoder = json.JSONDecoder()
     buffer = io.StringIO()  # Use StringIO as the buffer
 
@@ -110,7 +117,7 @@ def read_multiple_json(input: TextIO, buffer_size=65536, max_buffer_size=1342177
 
 
 def is_relative_subdirectory(
-    relative_path: str | Path, root_directory: str | Path
+    relative_path: str | PathLike, root_directory: str | PathLike
 ) -> bool:
     """
     Check if the target path is a subdirectory of the root path
@@ -138,7 +145,7 @@ class Crypt4GH:
     FILE_EXTENSION = ".c4gh"
 
     @staticmethod
-    def prepare_c4gh_keys(public_key_file_path: str | Path) -> tuple[Key]:
+    def prepare_c4gh_keys(public_key_file_path: str | PathLike) -> tuple[Key]:
         """
         Prepare the key format c4gh needs, while it can contain
         multiple keys for multiple recipients, in our use case there is
@@ -151,16 +158,16 @@ class Crypt4GH:
 
     @staticmethod
     def encrypt_file(
-        input_path: str | Path,
-        output_path: str | Path,
+        input_path: str | PathLike,
+        output_path: str | PathLike,
         public_keys: tuple[Crypt4GH.Key],
     ):
         """
         Encrypt the file, properly handling the Crypt4GH header.
 
-        :param file_location: pathlib.Path()
-        :param s3_object_id: string
-        :param keys: tuple[Key]
+        :param public_keys:
+        :param output_path:
+        :param input_path:
         :return: tuple with md5 values for original file, encrypted file
         """
         # TODO: Progress bar?
@@ -169,8 +176,10 @@ class Crypt4GH:
         output_path = Path(output_path)
 
         total_size = getsize(input_path)
-        with open(input_path, "rb") as in_fd, open(output_path, "wb") as out_fd:
-            with TqdmIOWrapper(
+        with (
+            open(input_path, "rb") as in_fd,
+            open(output_path, "wb") as out_fd,
+            TqdmIOWrapper(
                 in_fd,
                 tqdm(
                     total=total_size,
@@ -180,12 +189,13 @@ class Crypt4GH:
                     # unit_divisor=1024,  # make use of standard units e.g. KB, MB, etc.
                     miniters=1,
                 ),
-            ) as pbar_in_fd:
-                crypt4gh.lib.encrypt(
-                    keys=public_keys,
-                    infile=pbar_in_fd,
-                    outfile=out_fd,
-                )
+            ) as pbar_in_fd,
+        ):
+            crypt4gh.lib.encrypt(
+                keys=public_keys,
+                infile=pbar_in_fd,
+                outfile=out_fd,
+            )
 
     @staticmethod
     def retrieve_private_key(seckey_path):
@@ -206,8 +216,10 @@ class Crypt4GH:
     @staticmethod
     def decrypt_file(input_path, output_path, private_key):
         total_size = getsize(input_path)
-        with open(input_path, "rb") as in_fd, open(output_path, "wb") as out_fd:
-            with TqdmIOWrapper(
+        with (
+            open(input_path, "rb") as in_fd,
+            open(output_path, "wb") as out_fd,
+            TqdmIOWrapper(
                 in_fd,
                 tqdm(
                     total=total_size,
@@ -217,12 +229,13 @@ class Crypt4GH:
                     # unit_divisor=1024,  # make use of standard units e.g. KB, MB, etc.
                     miniters=1,
                 ),
-            ) as pbar_in_fd:
-                crypt4gh.lib.decrypt(
-                    keys=private_key,
-                    infile=pbar_in_fd,
-                    outfile=out_fd,
-                )
+            ) as pbar_in_fd,
+        ):
+            crypt4gh.lib.decrypt(
+                keys=private_key,
+                infile=pbar_in_fd,
+                outfile=out_fd,
+            )
 
 
 class TqdmIOWrapper(io.RawIOBase):
