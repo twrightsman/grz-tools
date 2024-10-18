@@ -36,11 +36,26 @@ keywords = ["encryption", "S3", "checksum", "upload"]
 grz-cli = "grz_upload.cli:cli"
 
 [project.optional-dependencies]
-dev = [
+test = [
     "pytest",
     "pytest-cov",
+    "pytest-sugar",
     "moto[s3]",
-    "ruff"
+    "ruff",
+    "numpy"
+]
+
+[dependency-groups]
+test = [
+    "pytest",
+    "pytest-cov",
+    "pytest-sugar",
+    "moto[s3]",
+    "numpy"
+]
+lint = [
+    "ruff",
+    "mypy"
 ]
 
 [tool.ruff]
@@ -114,3 +129,24 @@ max-complexity = 10
 
 [tool.ruff.lint.pydocstyle]
 convention = "pep257"
+
+[tool.tox]
+requires = ["tox>=4.23"]
+env_list = ["format-check", "lints", "3.10", "3.11", "3.12"]
+allowlist_externals = ["pytest", "ruff"]
+isolated_build = true
+
+[tool.tox.env_run_base]
+description = "run unit tests"
+dependency_groups = ["test"]
+commands = [["pytest", { replace = "posargs", default = ["tests"], extend = true }]]
+
+[tool.tox.env."format-check"]
+skip_install = true
+dependency_groups = ["lint"]
+commands = [["ruff", "format", "--check"]]
+
+[tool.tox.env."lints"]
+skip_install = true
+dependency_groups = ["lint"]
+commands = [["ruff", "check"]]
