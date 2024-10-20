@@ -10,18 +10,6 @@ from grz_upload.file_operations import calculate_sha256
 from grz_upload.upload import S3BotoUploadWorker
 
 
-@pytest.fixture
-def aws_credentials(config_content):
-    """Mocked AWS Credentials for moto."""
-    os.environ["AWS_ACCESS_KEY_ID"] = config_content["s3_access_key"]
-    os.environ["AWS_SECRET_ACCESS_KEY"] = config_content["s3_secret"]
-
-
-@pytest.fixture
-def boto_s3_client(aws_credentials):
-    with mock_aws():
-        conn = boto3.client("s3", region_name="us-east-1")
-        yield conn
 
 
 @pytest.fixture(scope="module")
@@ -29,15 +17,6 @@ def temp_log_dir(tmpdir_factory: pytest.TempdirFactory):
     """Create temporary log folder for this pytest module"""
     datadir = tmpdir_factory.mktemp("logs")
     return datadir
-
-
-@mock_aws
-@pytest.fixture
-def remote_bucket(boto_s3_client, config_content):
-    # create bucket
-    boto_s3_client.create_bucket(Bucket=config_content["s3_bucket"])
-
-    return boto3.resource("s3").Bucket(config_content["s3_bucket"])
 
 
 @pytest.fixture

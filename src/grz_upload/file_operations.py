@@ -145,15 +145,24 @@ class Crypt4GH:
     FILE_EXTENSION = ".c4gh"
 
     @staticmethod
-    def prepare_c4gh_keys(public_key_file_path: str | PathLike) -> tuple[Key]:
+    def prepare_c4gh_keys(
+        recipient_key_file_path: str | PathLike,
+        sender_private_key: str | PathLike | None = None,
+    ) -> tuple[Key]:
         """
-        Prepare the key format c4gh needs, while it can contain
-        multiple keys for multiple recipients, in our use case there is
-        a single recipient
+        Prepare the key format that Crypt4GH needs. While it can contain multiple
+         keys for multiple recipients, in our use case there is only a single recipient.
+
+        :param recipient_key_file_path: path to the public key file of the recipient
+        :param sender_private_key: path to the private key file of the sender.
+            If None, will be generated randomly.
         """
-        sk = PrivateKey.generate()
+        if sender_private_key is not None:
+            sk = Crypt4GH.retrieve_private_key(sender_private_key)
+        else:
+            sk = PrivateKey.generate()
         seckey = bytes(sk)
-        keys = ((0, seckey, crypt4gh.keys.get_public_key(public_key_file_path)),)
+        keys = ((0, seckey, crypt4gh.keys.get_public_key(recipient_key_file_path)),)
         return keys
 
     @staticmethod
@@ -198,7 +207,12 @@ class Crypt4GH:
             )
 
     @staticmethod
-    def retrieve_private_key(seckey_path):
+    def retrieve_private_key(seckey_path) -> bytes:
+        """
+        Read Crypt4GH private key from specified path.
+        :param seckey_path: path to the private key
+        :return:
+        """
         seckeypath = os.path.expanduser(seckey_path)
         if not os.path.exists(seckeypath):
             raise ValueError("Secret key not found")
@@ -214,7 +228,13 @@ class Crypt4GH:
         return crypt4gh.keys.get_private_key(seckeypath, passphrase_callback)
 
     @staticmethod
-    def decrypt_file(input_path, output_path, private_key):
+    def decrypt_file(input_path, output_path, private_key: bytes):
+        """
+        Decrypt a file using the provided private key
+        :param input_path: Path to the encrypted file
+        :param output_path: Path to the decrypted file
+        :param private_key: The private key
+        """
         total_size = getsize(input_path)
         with (
             open(input_path, "rb") as in_fd,
@@ -232,7 +252,9 @@ class Crypt4GH:
             ) as pbar_in_fd,
         ):
             crypt4gh.lib.decrypt(
-                keys=private_key,
+                keys=[
+                    (0, private_key, None)
+                ],  # list of (method, privkey, recipient_pubkey=None),
                 infile=pbar_in_fd,
                 outfile=out_fd,
             )

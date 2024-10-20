@@ -7,14 +7,14 @@ from os import PathLike
 from os.path import getsize
 from pathlib import Path
 from traceback import format_exc
-from typing import override
 
 import boto3
 from boto3 import client as boto3_client
 from botocore.config import Config as Boto3Config
 from tqdm.auto import tqdm
+from typing_extensions import override
 
-from grz_upload.parser import EncryptedSubmission
+from grz_upload import parser
 
 log = logging.getLogger(__name__)
 
@@ -24,13 +24,23 @@ class UploadError(Exception):
 
 
 class UploadWorker(metaclass=abc.ABCMeta):
-    def upload(self, encrypted_submission: EncryptedSubmission, submission_id: str):
-        for local_file_path, file_info in encrypted_submission.encrypted_files.items():
-            relative_file_path = file_info["relative_file_path"]
+    def upload(self, encrypted_submission: parser.EncryptedSubmission):
+        """
+        Upload an encrypted submission
+
+        :param encrypted_submission: The encrypted submission to upload
+        :raises UploadError: when the upload failed
+        """
+        submission_id = encrypted_submission.metadata.index_case_id
+        for (
+            local_file_path,
+            file_metadata,
+        ) in encrypted_submission.encrypted_files.items():
+            relative_file_path = file_metadata.file_path
             s3_object_id = Path(submission_id) / "files" / relative_file_path
 
             try:
-                self.upload_file(local_file_path, s3_object_id)
+                self.upload_file(local_file_path, str(s3_object_id))
             except Exception as e:
                 raise UploadError(
                     f"Failed to upload {local_file_path} (object id: {s3_object_id})"
@@ -47,6 +57,11 @@ class UploadWorker(metaclass=abc.ABCMeta):
 
     @abc.abstractmethod
     def upload_file(self, local_file_path: str | PathLike, s3_object_id: str):
+        """
+        Upload a single file to the specified object ID
+        :param local_file_path: Path to the file to upload
+        :param s3_object_id: Remote S3 object ID under which the file should be stored
+        """
         raise NotImplementedError()
 
 

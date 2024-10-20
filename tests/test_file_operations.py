@@ -24,8 +24,8 @@ def test_calculate_md5(temp_small_file_path: str, temp_small_file_md5sum):
     assert md5 == temp_small_file_md5sum
 
 
-def test_prepare_c4gh_keys(crypt4gh_public_key_file_path: str):
-    keys = Crypt4GH.prepare_c4gh_keys(crypt4gh_public_key_file_path)
+def test_prepare_c4gh_keys(crypt4gh_grz_public_key_file_path: str):
+    keys = Crypt4GH.prepare_c4gh_keys(crypt4gh_grz_public_key_file_path)
     # single key in tuple
     assert len(keys) == 1
     # key method is set to 0
@@ -64,8 +64,8 @@ def test_is_relative_subdirectory(relative_path, root_directory, expected):
 
 def test_crypt4gh_encrypt_file(
     temp_small_file_path: str,
-    c4gh_public_keys,
-    crypt4gh_private_key_file_path,
+    crypt4gh_grz_public_keys,
+    crypt4gh_grz_private_key_file_path,
     tmp_path_factory,
 ):
     tmp_dir = tmp_path_factory.mktemp("crypt4gh")
@@ -73,16 +73,16 @@ def test_crypt4gh_encrypt_file(
     tmp_encrypted_file = tmp_dir / "temp_file.c4gh"
     tmp_decrypted_file = tmp_dir / "temp_file"
 
-    Crypt4GH.encrypt_file(temp_small_file_path, tmp_encrypted_file, c4gh_public_keys)
+    Crypt4GH.encrypt_file(
+        temp_small_file_path, tmp_encrypted_file, crypt4gh_grz_public_keys
+    )
 
-    private_key = Crypt4GH.retrieve_private_key(crypt4gh_private_key_file_path)
+    private_key = Crypt4GH.retrieve_private_key(crypt4gh_grz_private_key_file_path)
 
     Crypt4GH.decrypt_file(
         tmp_encrypted_file,
         tmp_decrypted_file,
-        private_key=[
-            (0, private_key, None)
-        ],  # list of (method, privkey, recipient_pubkey=None)
+        private_key=private_key
     )
 
     import filecmp

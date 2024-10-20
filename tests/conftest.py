@@ -1,14 +1,14 @@
-from __future__ import annotations
-
 import json
 import os
 from os import PathLike
 from pathlib import Path
 from shutil import copyfile
 
+import boto3
 import numpy as np
 import pytest
 import yaml
+from moto import mock_aws
 
 from grz_upload.file_operations import Crypt4GH
 
@@ -16,18 +16,30 @@ config_path = "tests/mock_files/mock_config.yaml"
 small_file_input_path = "tests/mock_files/mock_small_input_file.txt"
 metadata_path = "tests/mock_files/example_metadata.json"
 
-crypt4gh_private_key_file = "tests/mock_files/mock_private_key.sec"
-crypt4gh_public_key_file = "tests/mock_files/mock_public_key.pub"
+crypt4gh_grz_private_key_file = "tests/mock_files/grz_mock_private_key.sec"
+crypt4gh_grz_public_key_file = "tests/mock_files/grz_mock_public_key.pub"
+crypt4gh_submitter_private_key_file = "tests/mock_files/submitter_mock_private_key.sec"
+crypt4gh_submitter_public_key_file = "tests/mock_files/submitter_mock_public_key.pub"
 
 
 @pytest.fixture()
-def crypt4gh_private_key_file_path():
-    return Path(crypt4gh_private_key_file)
+def crypt4gh_grz_private_key_file_path():
+    return Path(crypt4gh_grz_private_key_file)
 
 
 @pytest.fixture()
-def crypt4gh_public_key_file_path():
-    return Path(crypt4gh_public_key_file)
+def crypt4gh_grz_public_key_file_path():
+    return Path(crypt4gh_grz_public_key_file)
+
+
+@pytest.fixture()
+def crypt4gh_submitter_private_key_file_path():
+    return Path(crypt4gh_submitter_private_key_file)
+
+
+@pytest.fixture()
+def crypt4gh_submitter_public_key_file_path():
+    return Path(crypt4gh_submitter_public_key_file)
 
 
 @pytest.fixture(scope="session")
@@ -191,9 +203,13 @@ def temp_metadata_file_path(temp_data_dir_path, temp_large_file_path) -> Path:
 
 
 @pytest.fixture
-def config_content(crypt4gh_public_key_file_path):
+def config_content(
+    crypt4gh_grz_public_key_file_path, crypt4gh_grz_private_key_file_path
+):
     return {
-        "public_key_path": str(crypt4gh_public_key_file_path),
+        "grz_public_key_path": str(crypt4gh_grz_public_key_file_path),
+        "grz_private_key_path": str(crypt4gh_grz_private_key_file_path),
+        "submitter_private_key_path": str(crypt4gh_grz_public_key_file_path),
         "s3_url": "",
         "s3_bucket": "testing",
         "s3_access_key": "testing",
@@ -210,6 +226,34 @@ def temp_config_file_path(config_content, temp_data_dir_path) -> Path:
 
 
 @pytest.fixture
-def c4gh_public_keys(crypt4gh_public_key_file_path):
-    keys = Crypt4GH.prepare_c4gh_keys(crypt4gh_public_key_file_path)
+def crypt4gh_grz_public_keys(
+    crypt4gh_grz_public_key_file_path, crypt4gh_submitter_private_key_file_path
+):
+    keys = Crypt4GH.prepare_c4gh_keys(
+        recipient_key_file_path=crypt4gh_grz_public_key_file_path,
+        sender_private_key=crypt4gh_submitter_private_key_file_path,
+    )
     return keys
+
+
+@pytest.fixture
+def aws_credentials(config_content):
+    """Mocked AWS Credentials for moto."""
+    os.environ["AWS_ACCESS_KEY_ID"] = config_content["s3_access_key"]
+    os.environ["AWS_SECRET_ACCESS_KEY"] = config_content["s3_secret"]
+
+
+@pytest.fixture
+def boto_s3_client(aws_credentials):
+    with mock_aws():
+        conn = boto3.client("s3", region_name="us-east-1")
+        yield conn
+
+
+@mock_aws
+@pytest.fixture
+def remote_bucket(boto_s3_client, config_content):
+    # create bucket
+    boto_s3_client.create_bucket(Bucket=config_content["s3_bucket"])
+
+    return boto3.resource("s3").Bucket(config_content["s3_bucket"])

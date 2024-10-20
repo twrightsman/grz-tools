@@ -6,18 +6,17 @@ from collections.abc import Generator
 from dataclasses import dataclass
 from os import PathLike
 from pathlib import Path
-from typing import Dict, override
 
 import jsonschema
 
 from grz_upload.constants import GRZ_METADATA_JSONSCHEMA
 from grz_upload.file_operations import Crypt4GH, calculate_sha256
-from grz_upload.progress_logging import FileProgressLogger
+from grz_upload.upload import S3BotoUploadWorker
 
 log = logging.getLogger(__name__)
 
 
-@dataclass
+@dataclass(frozen=True)
 class SubmissionFileMetadata:
     """
     Dataclass for submission file metadata. Contains the following properties:
@@ -193,6 +192,13 @@ class SubmissionMetadata:
             raise e
 
     @property
+    def index_case_id(self) -> str:
+        """
+        The index case ID of this submission
+        """
+        return self.content["Submission"]["indexCaseId"]
+
+    @property
     def files(self) -> dict[Path, SubmissionFileMetadata]:
         """
         The files liked in the metadata.
@@ -284,6 +290,8 @@ class Submission:
 
         :return: Generator of errors
         """
+        from grz_upload.progress_logging import FileProgressLogger
+
         progress_logger = FileProgressLogger(log_file_path=progress_log_file)
         # cleanup log file and keep only files listed here
         progress_logger.cleanup(
@@ -337,23 +345,34 @@ class Submission:
     def encrypt(
         self,
         encrypted_files_dir: str | PathLike,
-        public_key_file_path: str | PathLike,
         progress_log_file: str | PathLike,
+        recipient_public_key_path: str | PathLike,
+        submitter_private_key_path: str | PathLike | None = None,
     ) -> EncryptedSubmission:
         """
         Encrypt this submission with a public key using Crypt4Gh
 
         :param encrypted_files_dir: Output directory of the encrypted files
-        :param public_key_file_path: Path to the public key file
         :param progress_log_file: Path to a log file to store the progress of the encryption process
+        :param recipient_public_key_path: Path to the public key file which will be used for encryption
+        :param submitter_private_key_path: Path to the private key file which will be used to sign the encryption
         :return: EncryptedSubmission instance
         """
         encrypted_files_dir = Path(encrypted_files_dir)
 
+        if not encrypted_files_dir.is_dir():
+            self.__log.debug(
+                "Creating encrypted submission files directory: %s...",
+                encrypted_files_dir,
+            )
+            encrypted_files_dir.mkdir(mode=0o770, parents=False, exist_ok=False)
+
+        from grz_upload.progress_logging import FileProgressLogger
+
         progress_logger = FileProgressLogger(log_file_path=progress_log_file)
 
         try:
-            public_keys = Crypt4GH.prepare_c4gh_keys(public_key_file_path)
+            public_keys = Crypt4GH.prepare_c4gh_keys(recipient_public_key_path)
         except Exception as e:
             self.__log.error(f"Error preparing public keys: {e}")
             raise e
@@ -361,10 +380,11 @@ class Submission:
         for file_path, file_metadata in self.files.items():
             # encryption_successful = True
             logged_state = progress_logger.get_state(file_path, file_metadata)
+            self.__log.debug("state for %s: %s", file_path, logged_state)
 
             encrypted_file_path = (
                 encrypted_files_dir
-                / EncryptedSubmission.get_encrypted_file_path(file_path)
+                / EncryptedSubmission.get_encrypted_file_path(file_metadata.file_path)
             )
 
             if (
@@ -405,7 +425,8 @@ class Submission:
         self.__log.info("File encryption completed.")
 
         return EncryptedSubmission(
-            metadata_dir=self.metadata_dir, encrypted_files_dir=encrypted_files_dir
+            metadata_dir=self.metadata_dir,
+            encrypted_files_dir=encrypted_files_dir,
         )
 
 
@@ -422,6 +443,11 @@ class EncryptedSubmission:
 
     @property
     def encrypted_files(self):
+        """
+        The encrypted files liked in the metadata.
+
+        :return: Dictionary of `local_file_path` -> `SubmissionFileMetadata` pairs.
+        """
         retval = {}
         for file_path, file_metadata in self.metadata.files.items():
             encrypted_file_path = self.get_encrypted_file_path(
@@ -442,8 +468,94 @@ class EncryptedSubmission:
         p = Path(file_path)
         return p.with_suffix(p.suffix + ".c4gh_header")
 
-    def decrypt(self) -> Submission:
-        raise NotImplementedError()
+    def decrypt(
+        self,
+        files_dir: str | PathLike,
+        progress_log_file: str | PathLike,
+        recipient_private_key_path: str | PathLike,
+    ) -> Submission:
+        """
+        Decrypt this encrypted submission with a private key using Crypt4Gh
+
+        :param files_dir: Output directory of the decrypted files
+        :param progress_log_file: Path to a log file to store the progress of the decryption process
+        :param recipient_private_key_path: Path to the private key file which will be used for decryption
+        :return: Submission instance
+        """
+        files_dir = Path(files_dir)
+
+        if not files_dir.is_dir():
+            self.__log.debug(
+                "Creating decrypted submission files directory: %s...",
+                files_dir,
+            )
+            files_dir.mkdir(mode=0o770, parents=False, exist_ok=False)
+
+        from grz_upload.progress_logging import FileProgressLogger
+
+        progress_logger = FileProgressLogger(log_file_path=progress_log_file)
+
+        try:
+            private_key = Crypt4GH.retrieve_private_key(recipient_private_key_path)
+        except Exception as e:
+            self.__log.error(f"Error preparing private key: {e}")
+            raise e
+
+        for encrypted_file_path, file_metadata in self.encrypted_files.items():
+            logged_state = progress_logger.get_state(encrypted_file_path, file_metadata)
+            self.__log.debug("state for %s: %s", encrypted_file_path, logged_state)
+
+            decrypted_file_path = files_dir / file_metadata.file_path
+
+            if (
+                (logged_state is None)
+                or not logged_state.get("decryption_successful", False)
+                or not decrypted_file_path.is_file()
+            ):
+                self.__log.info(
+                    "Decrypting file: '%s' -> '%s'",
+                    str(encrypted_file_path),
+                    str(decrypted_file_path),
+                )
+
+                try:
+                    Crypt4GH.decrypt_file(
+                        encrypted_file_path, decrypted_file_path, private_key
+                    )
+
+                    self.__log.info(
+                        f"Decryption complete for {str(encrypted_file_path)}. "
+                    )
+                    progress_logger.set_state(
+                        encrypted_file_path,
+                        file_metadata,
+                        state={"decryption_successful": True},
+                    )
+                except Exception as e:
+                    self.__log.error(
+                        "Decryption failed for '%s'", str(encrypted_file_path)
+                    )
+
+                    progress_logger.set_state(
+                        encrypted_file_path,
+                        file_metadata,
+                        state={"decryption_successful": False, "error": str(e)},
+                    )
+
+                    raise e
+            else:
+                self.__log.info(
+                    "File '%s' already decrypted in '%s'",
+                    str(encrypted_file_path),
+                    str(decrypted_file_path),
+                )
+
+        self.__log.info("File decryption completed.")
+
+        return Submission(
+            metadata_dir=self.metadata_dir,
+            files_dir=files_dir,
+        )
 
 
 class SubmissionValidationError(Exception):
@@ -454,35 +566,86 @@ class Worker:
     __log = log.getChild("Worker")
 
     def __init__(
-        self, submission_dir: str | PathLike, working_dir: str | PathLike = None
+        self,
+        working_dir: str | PathLike,
+        metadata_dir: str | PathLike | None = None,
+        files_dir: str | PathLike | None = None,
+        encrypted_files_dir: str | PathLike | None = None,
+        log_dir: str | PathLike | None = None,
     ):
-        submission_dir = Path(submission_dir)
-        working_dir = Path(working_dir) if working_dir is not None else submission_dir
+        self.working_dir = Path(working_dir)
+        self.__log.debug("Working directory: %s", self.working_dir)
 
-        self.submission = Submission(
-            metadata_dir=submission_dir / "metadata",
-            files_dir=submission_dir / "files",
+        # metadata dir
+        self.metadata_dir = (
+            Path(metadata_dir)
+            if metadata_dir is not None
+            else self.working_dir / "metadata"
         )
-        self.encrypted_files_dir = working_dir / "encrypted_files"
-        self.log_dir = working_dir / "logs"
-        if not self.log_dir.is_dir():
-            self.log_dir.mkdir(mode=0o770, parents=True, exist_ok=True)
+        self.__log.debug("Metadata directory: %s", self.metadata_dir)
 
-        self.log_dir.mkdir(mode=0o770, parents=True, exist_ok=True)
+        # files dir
+        self.files_dir = (
+            Path(files_dir) if files_dir is not None else self.working_dir / "files"
+        )
+        self.__log.debug("Files directory: %s", self.files_dir)
+
+        # encrypted files dir
+        self.encrypted_files_dir = (
+            Path(encrypted_files_dir)
+            if encrypted_files_dir is not None
+            else self.working_dir / "encrypted_files"
+        )
+        self.__log.info("Encrypted files directory: %s", self.encrypted_files_dir)
+
+        # log dir
+        self.log_dir = (
+            Path(log_dir) if log_dir is not None else self.working_dir / "logs"
+        )
         self.__log.info("Log directory: %s", self.log_dir)
+
+        # create log dir if non-existent
+        if not self.log_dir.is_dir():
+            self.__log.debug("Creating log directory...")
+            self.log_dir.mkdir(mode=0o770, parents=False, exist_ok=False)
 
         self.progress_file_checksum = self.log_dir / "progress_checksum.cjson"
         self.progress_file_encrypt = self.log_dir / "progress_encrypt.cjson"
+        self.progress_file_decrypt = self.log_dir / "progress_decrypt.cjson"
         self.progress_file_upload = self.log_dir / "progress_upload.cjson"
+        self.progress_file_download = self.log_dir / "progress_download.cjson"
 
-    def validate(self):
+    def parse_submission(self) -> Submission:
+        """
+        Reads the submission metadata and returns a Submission instance
+        """
+        submission = Submission(
+            metadata_dir=self.metadata_dir,
+            files_dir=self.files_dir,
+        )
+        return submission
+
+    def parse_encrypted_submission(self) -> EncryptedSubmission:
+        """
+        Reads the submission metadata and returns an EncryptedSubmission instance
+        """
+        encrypted_submission = EncryptedSubmission(
+            metadata_dir=self.metadata_dir,
+            encrypted_files_dir=self.encrypted_files_dir,
+        )
+        return encrypted_submission
+
+    def validate(self, force=False):
         """
         Validate this submission
 
+        :param force: Force validation of already validated files
         :raises SubmissionValidationError: if the validation fails
         """
+        submission = self.parse_submission()
+
         self.__log.info("Starting metadata validation...")
-        if errors := list(self.submission.metadata.validate()):
+        if errors := list(submission.metadata.validate()):
             error_msg = "\n".join(["Metadata validation failed! Errors:", *errors])
             self.__log.error(error_msg)
 
@@ -490,11 +653,12 @@ class Worker:
         else:
             self.__log.info("Metadata validation successful!")
 
+        if force:
+            # delete the log file
+            self.progress_file_checksum.unlink()
         self.__log.info("Starting checksum validation...")
         if errors := list(
-            self.submission.validate_checksums(
-                progress_log_file=self.progress_file_checksum
-            )
+            submission.validate_checksums(progress_log_file=self.progress_file_checksum)
         ):
             error_msg = "\n".join(["Checksum validation failed! Errors:", *errors])
             self.__log.error(error_msg)
@@ -505,18 +669,74 @@ class Worker:
 
         # TODO: validate FASTQ
 
-    def encrypt(self, public_key_file_path: str | PathLike) -> EncryptedSubmission:
+    def encrypt(
+        self,
+        recipient_public_key_path: str | PathLike,
+        submitter_private_key_path: str | PathLike | None = None,
+        force=False,
+    ) -> EncryptedSubmission:
         """
         Encrypt this submission with a public key using Crypt4Gh.
+        :param recipient_public_key_path: Path to the public key file of the recipient.
+        :param submitter_private_key_path: Path to the private key file of the submitter.
+        :param force: Force encryption of already encrypted files
+        :return: EncryptedSubmission instance
+        """
+        submission = self.parse_submission()
+
+        if force:
+            # delete the log file
+            self.progress_file_encrypt.unlink()
+
+        encrypted_submission = submission.encrypt(
+            encrypted_files_dir=self.encrypted_files_dir,
+            progress_log_file=self.progress_file_encrypt,
+            recipient_public_key_path=recipient_public_key_path,
+            submitter_private_key_path=submitter_private_key_path,
+        )
+
+        return encrypted_submission
+
+    def decrypt(
+        self, recipient_private_key_path: str | PathLike, force=False
+    ) -> Submission:
+        """
+        Encrypt this submission with a public key using Crypt4Gh.
+        :param recipient_public_key_path: Path to the public key file of the recipient.
+        :param submitter_private_key_path: Path to the private key file of the submitter.
+        :param force: Force decryption of already decrypted files
+        :return: EncryptedSubmission instance
+        """
+        encrypted_submission = self.parse_encrypted_submission()
+
+        if force:
+            # delete the log file
+            self.progress_file_decrypt.unlink()
+
+        submission = encrypted_submission.decrypt(
+            files_dir=self.files_dir,
+            progress_log_file=self.progress_file_decrypt,
+            recipient_private_key_path=recipient_private_key_path,
+        )
+
+        return submission
+
+    def upload(self, s3_settings: dict[str, str]):
+        """
+        Upload an encrypted submission
 
         :return: EncryptedSubmission instance
         """
-        encrypted_submission = self.submission.encrypt(
-            encrypted_files_dir=self.encrypted_files_dir,
-            public_key_file_path=public_key_file_path,
-            progress_log_file=self.progress_file_encrypt,
-        )
-        return encrypted_submission
+        if s3_settings.get("use_s3cmd", False):
+            raise NotImplementedError()
+        else:
+            upload_worker = S3BotoUploadWorker(
+                s3_settings, status_file_path=self.progress_file_upload
+            )
+
+        encrypted_submission = self.parse_encrypted_submission()
+
+        upload_worker.upload(encrypted_submission)
 
     # def show_summary(self, stage: str):
     #     """

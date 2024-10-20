@@ -4,6 +4,7 @@ channels:
   - bioconda
 dependencies:
   - python >=3.10
+  - typing-extensions
   - boto3
   - pyyaml
   - click

@@ -292,7 +292,7 @@
                                 "tumorCellCountmethod": {
                                     "type": "string",
                                     "description": "method used to determine cell count",
-                                    "enum": ["Pathology", "Bioninformatics", "other", "unknown"]
+                                    "enum": ["Pathology", "Bioinformatics", "other", "unknown"]
                                 },
                                 "sequenceData": {
                                     "type": "array",
