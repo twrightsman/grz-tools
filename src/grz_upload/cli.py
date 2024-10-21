@@ -4,9 +4,7 @@ CLI module for handling command-line interface operations.
 
 import logging
 import logging.config
-from os import PathLike
 from pathlib import Path
-from traceback import format_exc
 
 import click
 import yaml
@@ -20,12 +18,17 @@ log = logging.getLogger(PACKAGE_ROOT + ".cli")
 
 
 class OrderedGroup(click.Group):
+    """A click Group that keeps track of the order in which commands are added."""
+
     def list_commands(self, ctx):
-        # Return commands in the order they were added
+        """Return the list of commands in the order they were added."""
         return list(self.commands.keys())
 
 
-@click.group(cls=OrderedGroup)
+@click.group(
+    cls=OrderedGroup,
+    help="Validate, encrypt, decrypt and upload submissions to a GRZ/GDC.",
+)
 @click.version_option(version="0.1", prog_name="grz-cli")
 @click.option("--log-file", metavar="FILE", type=str, help="Path to log file")
 @click.option(
