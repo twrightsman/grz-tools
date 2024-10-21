@@ -1,3 +1,5 @@
+"""Tests for the parser module."""
+
 from pathlib import Path
 
 from grz_upload.parser import EncryptedSubmission, SubmissionMetadata

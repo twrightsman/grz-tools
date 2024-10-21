@@ -128,14 +128,14 @@ def validate(submission_dir: str, metadata_dir: str, files_dir: str, working_dir
     """
     log.info("Starting validation...")
 
-    working_dir = Path(working_dir)
-    submission_dir = Path(submission_dir)
+    working_dir_path: Path = Path(working_dir)
+    submission_dir_path: Path = Path(submission_dir)
 
     worker_inst = Worker(
-        working_dir=working_dir,
-        files_dir=submission_dir / "files" if files_dir is None else files_dir,
+        working_dir=working_dir_path,
+        files_dir=submission_dir_path / "files" if files_dir is None else files_dir,
         metadata_dir=(
-            submission_dir / "metadata" if metadata_dir is None else metadata_dir
+            submission_dir_path / "metadata" if metadata_dir is None else metadata_dir
         ),
     )
     worker_inst.validate()
@@ -375,21 +375,21 @@ def decrypt(  # noqa: PLR0913
 
     log.info("Starting encryption...")
 
-    working_dir = Path(working_dir)
-    encrypted_submission_dir = Path(encrypted_submission_dir)
+    working_dir_: Path = Path(working_dir)
+    encrypted_submission_dir_: Path = Path(encrypted_submission_dir)
 
     worker_inst = Worker(
-        working_dir=working_dir,
-        files_dir=working_dir / "files"
+        working_dir=working_dir_,
+        files_dir=working_dir_ / "files"
         if decrypted_files_dir is None
         else decrypted_files_dir,
         metadata_dir=(
-            encrypted_submission_dir / "metadata"
+            encrypted_submission_dir_ / "metadata"
             if metadata_dir is None
             else metadata_dir
         ),
         encrypted_files_dir=(
-            encrypted_submission_dir / "encrypted_files"
+            encrypted_submission_dir_ / "encrypted_files"
             if encrypted_files_dir is None
             else encrypted_files_dir
         ),
@@ -479,9 +479,11 @@ def upload(
 ):
     """
     Uploads a submission file to s3 using the provided configuration.
-    :param config: The path to the configuration file.
-    :param folderpath: Path to a working directory where intermediate files can be stored
-    :param use_s3cmd: Whether to use s3cmd for the upload or builtin boto3
+    :param encrypted_submission_dir: The path to the encrypted submission directory.
+    :param metadata_dir: The path to the metadata directory.
+    :param encrypted_files_dir: The path to the encrypted files directory.
+    :param working_dir: Path to a working directory where intermediate files can be stored
+    :param config_file: The path to the configuration file.
     """
     with open(config_file) as f:
         config = yaml.safe_load(f)

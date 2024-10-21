@@ -1,15 +1,13 @@
-import os
+"""Tests for the upload module"""
+
 from pathlib import Path
 
-import boto3
 import pytest
 import yaml
 from moto import mock_aws
 
 from grz_upload.file_operations import calculate_sha256
 from grz_upload.upload import S3BotoUploadWorker
-
-
 
 
 @pytest.fixture(scope="module")

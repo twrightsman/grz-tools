@@ -1,3 +1,5 @@
+"""Tests for the file_progress_logging module."""
+
 import hashlib
 import json
 from pathlib import Path

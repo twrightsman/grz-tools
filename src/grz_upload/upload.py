@@ -1,3 +1,5 @@
+"""Module for uploading encrypted submissions to a remote storage"""
+
 from __future__ import annotations
 
 import abc
@@ -20,10 +22,14 @@ log = logging.getLogger(__name__)
 
 
 class UploadError(Exception):
+    """Exception raised when an upload fails"""
+
     pass
 
 
 class UploadWorker(metaclass=abc.ABCMeta):
+    """Worker baseclass for uploading encrypted submissions"""
+
     def upload(self, encrypted_submission: parser.EncryptedSubmission):
         """
         Upload an encrypted submission
@@ -66,12 +72,17 @@ class UploadWorker(metaclass=abc.ABCMeta):
 
 
 class S3BotoUploadWorker(UploadWorker):
+    """Implementation of an upload worker using boto3 for S3"""
+
     __log = log.getChild("S3BotoUploadWorker")
 
     MULTIPART_CHUNK_SIZE = 200 * 1024 * 1024  # 200 MB
     MAX_SINGLEPART_UPLOAD_SIZE = 5 * 1024 * 1024  # 5 MB
 
-    def __init__(self, s3_settings: dict[str, str], status_file_path: str | PathLike):
+    # TODO: s3_settings should have its own class
+    def __init__(
+        self, s3_settings: dict[str, str | None], status_file_path: str | PathLike
+    ):
         """
         An upload manager for S3 storage
 
@@ -84,7 +95,6 @@ class S3BotoUploadWorker(UploadWorker):
             - s3_url
             - s3_session_token
             - proxy_url
-        :param s3_submission_prefix: Prefix of this submission on the S3 bucket
         :param status_file_path: file for storing upload state. Can be used for e.g. resumable uploads.
         """
         super().__init__()
@@ -96,8 +106,8 @@ class S3BotoUploadWorker(UploadWorker):
 
     def _init_s3_client(self):
         # if user specifies empty strings, this might be an issue
-        def empty_str_to_none(string: str):
-            if string == "":
+        def empty_str_to_none(string: str | None) -> str | None:
+            if string == "" or string is None:
                 return None
             else:
                 return string
@@ -140,7 +150,7 @@ class S3BotoUploadWorker(UploadWorker):
         """
         Upload the file in chunks to S3.
 
-        :param file_location: pathlib.Path()
+        :param local_file: pathlib.Path()
         :param s3_object_id: string
         :return: sha256 value for uploaded file
         """
@@ -227,6 +237,7 @@ class S3BotoUploadWorker(UploadWorker):
         file_size = getsize(local_file_path)
         if file_size > S3BotoUploadWorker.MAX_SINGLEPART_UPLOAD_SIZE:
             # do multipart upload
-            sha256sums = self._multipart_upload(local_file_path, s3_object_id)
+            _sha256sums = self._multipart_upload(local_file_path, s3_object_id)
         else:
-            sha256sums = self._upload(local_file_path, s3_object_id)
+            _sha256sums = self._upload(local_file_path, s3_object_id)
+        # TODO: check sha256sums

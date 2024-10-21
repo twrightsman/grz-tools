@@ -1,3 +1,8 @@
+"""
+Utility module for basic file operations.
+Includes functions for calculating checksums, streaming json objects, file system checks and Crypt4GH encryption/decryption.
+"""
+
 from __future__ import annotations
 
 import hashlib
@@ -5,6 +10,7 @@ import io
 import json
 import logging
 import os
+import typing
 from functools import partial
 from getpass import getpass
 from os import PathLike
@@ -106,7 +112,7 @@ def read_multiple_json(input: TextIO, buffer_size=65536, max_buffer_size=1342177
 
                 # Reset the buffer with the unprocessed content
                 buffer = io.StringIO(data[idx:])
-            except json.JSONDecodeError as e:
+            except json.JSONDecodeError:
                 # If a JSONDecodeError occurs, we need more data, so break out to read the next chunk
                 break
 
@@ -138,6 +144,8 @@ def is_relative_subdirectory(
 
 
 class Crypt4GH:
+    """Crypt4GH encryption/decryption utility class"""
+
     Key = tuple[int, bytes, bytes]
 
     VERSION = 1
@@ -160,9 +168,8 @@ class Crypt4GH:
         if sender_private_key is not None:
             sk = Crypt4GH.retrieve_private_key(sender_private_key)
         else:
-            sk = PrivateKey.generate()
-        seckey = bytes(sk)
-        keys = ((0, seckey, crypt4gh.keys.get_public_key(recipient_key_file_path)),)
+            sk = bytes(PrivateKey.generate())
+        keys = ((0, sk, crypt4gh.keys.get_public_key(recipient_key_file_path)),)
         return keys
 
     @staticmethod
@@ -189,7 +196,7 @@ class Crypt4GH:
             open(input_path, "rb") as in_fd,
             open(output_path, "wb") as out_fd,
             TqdmIOWrapper(
-                in_fd,
+                typing.cast(io.RawIOBase, in_fd),
                 tqdm(
                     total=total_size,
                     desc=f"Encrypting: '{input_path.name}'",
@@ -240,7 +247,7 @@ class Crypt4GH:
             open(input_path, "rb") as in_fd,
             open(output_path, "wb") as out_fd,
             TqdmIOWrapper(
-                in_fd,
+                typing.cast(io.RawIOBase, in_fd),
                 tqdm(
                     total=total_size,
                     desc=f"Decrypting: '{input_path.name}'",
@@ -294,12 +301,14 @@ class TqdmIOWrapper(io.RawIOBase):
         self.callback = progress_bar.update
 
     def write(self, data):
+        """Write data to the buffer and update the progress bar"""
         nbytes_written = self.io_buf.write(data)
         if nbytes_written:
             self.callback(nbytes_written)
         return nbytes_written
 
-    def read(self, size=-1) -> bytes:
+    def read(self, size=-1) -> bytes | None:
+        """Read data from the buffer and update the progress bar"""
         data = self.io_buf.read(size)
         if data:
             self.callback(len(data))
@@ -307,6 +316,7 @@ class TqdmIOWrapper(io.RawIOBase):
         return data
 
     def readinto(self, buffer, /):
+        """Read data into a buffer and update the progress bar"""
         nbytes_written = self.io_buf.readinto(buffer)
         if nbytes_written:
             self.callback(nbytes_written)
@@ -314,10 +324,12 @@ class TqdmIOWrapper(io.RawIOBase):
         return nbytes_written
 
     def flush(self):
+        """Flush the buffer"""
         # Ensure all data is flushed to the underlying binary IO object
         self.io_buf.flush()
 
     def close(self):
+        """Close the buffer"""
         # Close the underlying binary IO object
         self.io_buf.close()
 

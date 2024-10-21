@@ -1,3 +1,5 @@
+"""Fixtures for the tests."""
+
 import json
 import os
 from os import PathLike

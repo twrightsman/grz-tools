@@ -1,6 +1,9 @@
+"""Validation of FASTQ files. Boils down to basic sanity checks such as line count and read length."""
+
 import gzip
 import logging
 from collections.abc import Generator
+from contextlib import contextmanager
 from os import PathLike
 
 log = logging.getLogger(__name__)
@@ -16,6 +19,7 @@ def is_gzipped(file_path: str | PathLike) -> bool:
     return str(file_path).endswith(".gz")
 
 
+@contextmanager
 def open_fastq(file_path: str | PathLike):
     """
     Open a FASTQ file, handling both regular and gzipped formats.
@@ -24,9 +28,11 @@ def open_fastq(file_path: str | PathLike):
     :return: A file object opened in the appropriate mode (gzipped or plain text)
     """
     if is_gzipped(file_path):
-        return gzip.open(file_path, "rb")  # Open gzipped FASTQ
+        with gzip.open(file_path, "rb") as f:
+            yield f
     else:
-        return open(file_path)  # Open regular FASTQ  # noqa: SIM115
+        with open(file_path) as f:
+            yield f
 
 
 def calculate_fastq_stats(file_path) -> tuple[int, set[int]]:

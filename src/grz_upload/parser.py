@@ -1,3 +1,5 @@
+"""Classes for parsing and validating submission metadata and files."""
+
 from __future__ import annotations
 
 import json
@@ -129,7 +131,8 @@ class SubmissionFileMetadata:
             checksum_type=data.get("checksumType", "sha256"),
         )
 
-    def to_json_dict(self):
+    def to_json_dict(self) -> dict:
+        """Build a JSON-like dictionary from the object."""
         return {
             "filePath": str(self.file_path),
             "fileType": self.file_type,
@@ -140,11 +143,13 @@ class SubmissionFileMetadata:
 
 
 class SubmissionMetadata:
+    """Class for reading and validating submission metadata"""
+
     __log = log.getChild("SubmissionMetadata")
 
     def __init__(self, metadata_file):
         """
-        Class for reading and validating submission metadata
+        Load, parse and validate the metadata file.
 
         :param metadata_file: path to the metadata.json file
         :raises json.JSONDecodeError: if failed to read the metadata.json file
@@ -223,11 +228,11 @@ class SubmissionMetadata:
 
     def validate(self) -> Generator[str]:
         """
-        Validates this submission metadata.
+        Validates this submission's metadata (content).
 
         :return: Generator of errors
         """
-        submission_files = {}
+        submission_files: dict[str | PathLike, SubmissionFileMetadata] = {}
         for donor in self.content.get("Donors", []):
             for lab_data in donor.get("labData", []):
                 for sequence_data in lab_data.get("sequenceData", []):
@@ -261,9 +266,17 @@ class SubmissionMetadata:
 
 
 class Submission:
+    """Class for handling submission data"""
+
     __log = log.getChild("Submission")
 
     def __init__(self, metadata_dir: str | PathLike, files_dir: str | PathLike):
+        """
+        Initialize the submission object.
+
+        :param metadata_dir: Path to the metadata directory
+        :param files_dir: Path to the files directory
+        """
         self.metadata_dir = Path(metadata_dir)
         self.files_dir = Path(files_dir)
 
@@ -364,7 +377,9 @@ class Submission:
             msg = f"Public key file does not exist: {recipient_public_key_path}"
             self.__log.error(msg)
             raise FileNotFoundError(msg)
-        if not Path(submitter_private_key_path).expanduser().is_file():
+        if not submitter_private_key_path:
+            self.__log.warning("No submitter private key provided, skipping signing.")
+        elif not Path(submitter_private_key_path).expanduser().is_file():
             msg = f"Private key file does not exist: {submitter_private_key_path}"
             self.__log.error(msg)
             raise FileNotFoundError(msg)
@@ -440,11 +455,19 @@ class Submission:
 
 
 class EncryptedSubmission:
+    """The encrypted counterpart to `Submission`. Handles encrypted submission data."""
+
     __log = log.getChild("EncryptedSubmission")
 
     def __init__(
         self, metadata_dir: str | PathLike, encrypted_files_dir: str | PathLike
     ):
+        """
+        Initialize the encrypted submission object.
+
+        :param metadata_dir: Path to the metadata directory
+        :param encrypted_files_dir: Path to the encrypted files directory
+        """
         self.metadata_dir = Path(metadata_dir)
         self.encrypted_files_dir = Path(encrypted_files_dir)
 
@@ -469,11 +492,19 @@ class EncryptedSubmission:
 
     @staticmethod
     def get_encrypted_file_path(file_path: str | PathLike) -> Path:
+        """
+        Return the path to the encrypted file based on the original file path,
+        with additional extension'.c4gh'.
+        """
         p = Path(file_path)
         return p.with_suffix(p.suffix + ".c4gh")
 
     @staticmethod
     def get_encryption_header_path(file_path: str | PathLike) -> Path:
+        """
+        Return the path to the encryption header file based on the original file path,
+        with additional extension'.c4gh_header'.
+        """
         p = Path(file_path)
         return p.with_suffix(p.suffix + ".c4gh_header")
 
@@ -568,10 +599,14 @@ class EncryptedSubmission:
 
 
 class SubmissionValidationError(Exception):
+    """Exception raised when validation of a submission fails"""
+
     pass
 
 
 class Worker:
+    """Worker class for handling submission processing"""
+
     __log = log.getChild("Worker")
 
     def __init__(
@@ -582,6 +617,15 @@ class Worker:
         encrypted_files_dir: str | PathLike | None = None,
         log_dir: str | PathLike | None = None,
     ):
+        """
+        Initialize the worker object.
+
+        :param working_dir: Path to the working directory
+        :param metadata_dir: Path to the metadata directory
+        :param files_dir: Path to the files directory
+        :param encrypted_files_dir: Path to the encrypted files directory
+        :param log_dir: Path to the log directory
+        """
         self.working_dir = Path(working_dir)
         self.__log.debug("Working directory: %s", self.working_dir)
 

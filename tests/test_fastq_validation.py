@@ -1,3 +1,5 @@
+"""Tests for the fastq_validation module."""
+
 from grz_upload.fastq_validation import (
     validate_paired_end_reads,
     validate_single_end_reads,

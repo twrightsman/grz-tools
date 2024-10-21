@@ -1,3 +1,5 @@
+"""Tests for the command line interface."""
+
 from pathlib import Path
 
 import pytest
@@ -96,9 +98,7 @@ def test_encrypt_decrypt_submission(
         expected_checksum = calculate_sha256(
             Path("tests/mock_files/submissions/valid_submission/files") / file
         )
-        observed_checksum = calculate_sha256(
-            working_dir_path / "files" / file
-        )
+        observed_checksum = calculate_sha256(working_dir_path / "files" / file)
 
         assert expected_checksum == observed_checksum
 
@@ -130,9 +130,7 @@ def test_decrypt_submission(working_dir_path, temp_config_file_path):
         expected_checksum = calculate_sha256(
             Path("tests/mock_files/submissions/valid_submission/files") / file
         )
-        observed_checksum = calculate_sha256(
-            working_dir_path / "files" / file
-        )
+        observed_checksum = calculate_sha256(working_dir_path / "files" / file)
 
         assert expected_checksum == observed_checksum
 

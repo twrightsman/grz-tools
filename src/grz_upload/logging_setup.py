@@ -18,7 +18,7 @@ log = logging.getLogger(__name__)
 def add_filelogger(
     file_path: str | PathLike | None = None,
     level: str = "INFO",
-    logger: str = PACKAGE_ROOT,
+    logger_name: str = PACKAGE_ROOT,
 ) -> None:
     """
     Add file logging for the specified package.
@@ -32,9 +32,9 @@ def add_filelogger(
                       a default path will be used.
     :param level: Optional; the logging level. Default is 'INFO'.
                   Must be a valid logging level name (e.g., 'DEBUG', 'INFO').
-    :param logger:
+    :param logger_name:
     """
-    logger = logging.getLogger(logger)
+    logger = logging.getLogger(logger_name)
 
     if file_path is None:
         default_log_dir = Path.home() / "logs"

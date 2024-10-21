@@ -1,3 +1,5 @@
+"""Tests for `read_multiple_json` from the file_operations module."""
+
 import io
 
 import pytest
@@ -79,7 +81,7 @@ def test_read_multiple_json_incomplete():
 
     with pytest.raises(ValueError):
         # The last object is incomplete
-        result = list(read_multiple_json(input_stream))
+        _result = list(read_multiple_json(input_stream))
 
 
 # Empty input
@@ -98,7 +100,7 @@ def test_read_multiple_json_invalid():
     input_stream = io.StringIO(json_data)
 
     with pytest.raises(ValueError):
-        result = list(read_multiple_json(input_stream))
+        _result = list(read_multiple_json(input_stream))
 
 
 # Mixed valid and invalid JSON objects
@@ -109,4 +111,4 @@ def test_read_multiple_json_mixed_valid_invalid():
     input_stream = io.StringIO(json_data)
 
     with pytest.raises(ValueError):
-        result = list(read_multiple_json(input_stream))
+        _result = list(read_multiple_json(input_stream))
