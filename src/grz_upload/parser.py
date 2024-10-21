@@ -360,6 +360,15 @@ class Submission:
         """
         encrypted_files_dir = Path(encrypted_files_dir)
 
+        if not Path(recipient_public_key_path).expanduser().is_file():
+            msg = f"Public key file does not exist: {recipient_public_key_path}"
+            self.__log.error(msg)
+            raise FileNotFoundError(msg)
+        if not Path(submitter_private_key_path).expanduser().is_file():
+            msg = f"Private key file does not exist: {submitter_private_key_path}"
+            self.__log.error(msg)
+            raise FileNotFoundError(msg)
+
         if not encrypted_files_dir.is_dir():
             self.__log.debug(
                 "Creating encrypted submission files directory: %s...",
