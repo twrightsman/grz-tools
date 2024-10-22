@@ -1,6 +1,7 @@
 """Constants for logging configuration, JSON schema validation, and other settings."""
 
 import json
+from importlib import resources as ir
 
 PACKAGE_ROOT = "grz_cli"
 
@@ -38,5 +39,9 @@ LOGGING_CONFIG = {
     },
 }
 
-with open("resources/grz-schema.json") as fd:
-    GRZ_METADATA_JSONSCHEMA = json.load(fd)
+GRZ_METADATA_JSONSCHEMA = json.loads(
+    ir.files(PACKAGE_ROOT)
+    .joinpath("resources")
+    .joinpath("grz-schema.json")
+    .read_text(encoding="utf-8")
+)
