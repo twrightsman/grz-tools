@@ -11,9 +11,9 @@ from pathlib import Path
 
 import jsonschema
 
-from grz_upload.constants import GRZ_METADATA_JSONSCHEMA
-from grz_upload.file_operations import Crypt4GH, calculate_sha256
-from grz_upload.upload import S3BotoUploadWorker
+from grz_cli.constants import GRZ_METADATA_JSONSCHEMA
+from grz_cli.file_operations import Crypt4GH, calculate_sha256
+from grz_cli.upload import S3BotoUploadWorker
 
 log = logging.getLogger(__name__)
 
@@ -303,7 +303,7 @@ class Submission:
 
         :return: Generator of errors
         """
-        from grz_upload.progress_logging import FileProgressLogger
+        from grz_cli.progress_logging import FileProgressLogger
 
         progress_logger = FileProgressLogger(log_file_path=progress_log_file)
         # cleanup log file and keep only files listed here
@@ -391,7 +391,7 @@ class Submission:
             )
             encrypted_files_dir.mkdir(mode=0o770, parents=False, exist_ok=False)
 
-        from grz_upload.progress_logging import FileProgressLogger
+        from grz_cli.progress_logging import FileProgressLogger
 
         progress_logger = FileProgressLogger(log_file_path=progress_log_file)
 
@@ -531,7 +531,7 @@ class EncryptedSubmission:
             )
             files_dir.mkdir(mode=0o770, parents=False, exist_ok=False)
 
-        from grz_upload.progress_logging import FileProgressLogger
+        from grz_cli.progress_logging import FileProgressLogger
 
         progress_logger = FileProgressLogger(log_file_path=progress_log_file)
 

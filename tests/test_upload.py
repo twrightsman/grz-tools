@@ -6,8 +6,8 @@ import pytest
 import yaml
 from moto import mock_aws
 
-from grz_upload.file_operations import calculate_sha256
-from grz_upload.upload import S3BotoUploadWorker
+from grz_cli.file_operations import calculate_sha256
+from grz_cli.upload import S3BotoUploadWorker
 
 
 @pytest.fixture(scope="module")

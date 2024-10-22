@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from grz_upload.file_operations import (
+from grz_cli.file_operations import (
     Crypt4GH,
     calculate_md5,
     calculate_sha256,

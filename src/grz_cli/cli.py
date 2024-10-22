@@ -9,9 +9,9 @@ from pathlib import Path
 import click
 import yaml
 
-from grz_upload.constants import PACKAGE_ROOT
-from grz_upload.logging_setup import add_filelogger
-from grz_upload.parser import Worker
+from grz_cli.constants import PACKAGE_ROOT
+from grz_cli.logging_setup import add_filelogger
+from grz_cli.parser import Worker
 
 # replace __MAIN__ with correct module name
 log = logging.getLogger(PACKAGE_ROOT + ".cli")
@@ -227,7 +227,7 @@ def validate(submission_dir: str, metadata_dir: str, files_dir: str, working_dir
         exists=True, file_okay=True, dir_okay=False, readable=True, resolve_path=True
     ),
     required=True,
-    default="~/.config/grz_upload/config.yaml",
+    default="~/.config/grz_cli/config.yaml",
     help="Path to config file",
 )
 def encrypt(  # noqa: PLR0913
@@ -354,7 +354,7 @@ def encrypt(  # noqa: PLR0913
         exists=True, file_okay=True, dir_okay=False, readable=True, resolve_path=True
     ),
     required=True,
-    default="~/.config/grz_upload/config.yaml",
+    default="~/.config/grz_cli/config.yaml",
     help="Path to config file",
 )
 def decrypt(  # noqa: PLR0913
@@ -467,7 +467,7 @@ def decrypt(  # noqa: PLR0913
         exists=True, file_okay=True, dir_okay=False, readable=True, resolve_path=True
     ),
     required=True,
-    default="~/.config/grz_upload/config.yaml",
+    default="~/.config/grz_cli/config.yaml",
     help="Path to config file",
 )
 def upload(

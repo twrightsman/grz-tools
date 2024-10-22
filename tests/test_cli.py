@@ -6,8 +6,8 @@ import pytest
 from click.testing import CliRunner
 from moto import mock_aws
 
-import grz_upload.cli
-from grz_upload.file_operations import calculate_sha256
+import grz_cli.cli
+from grz_cli.file_operations import calculate_sha256
 
 
 @pytest.fixture(scope="session")
@@ -32,10 +32,10 @@ def test_validate_submission(working_dir_path, temp_config_file_path):
     ]
 
     runner = CliRunner()
-    result = runner.invoke(grz_upload.cli.cli, testargs, catch_exceptions=False)
+    result = runner.invoke(grz_cli.cli.cli, testargs, catch_exceptions=False)
 
     # check if re-validation is skipped
-    result = runner.invoke(grz_upload.cli.cli, testargs, catch_exceptions=False)
+    result = runner.invoke(grz_cli.cli.cli, testargs, catch_exceptions=False)
 
     # test if command has correctly checked for:
     # - mismatched md5sums
@@ -62,7 +62,7 @@ def test_encrypt_decrypt_submission(
     ]
 
     runner = CliRunner()
-    result = runner.invoke(grz_upload.cli.cli, testargs, catch_exceptions=False)
+    result = runner.invoke(grz_cli.cli.cli, testargs, catch_exceptions=False)
 
     assert result.exit_code == 0, result.output
 
@@ -82,7 +82,7 @@ def test_encrypt_decrypt_submission(
     ]
 
     runner = CliRunner()
-    result = runner.invoke(grz_upload.cli.cli, testargs, catch_exceptions=False)
+    result = runner.invoke(grz_cli.cli.cli, testargs, catch_exceptions=False)
 
     assert result.exit_code == 0, result.output
 
@@ -114,7 +114,7 @@ def test_decrypt_submission(working_dir_path, temp_config_file_path):
         temp_config_file_path,
     ]
     runner = CliRunner()
-    result = runner.invoke(grz_upload.cli.cli, testargs, catch_exceptions=False)
+    result = runner.invoke(grz_cli.cli.cli, testargs, catch_exceptions=False)
 
     assert result.exit_code == 0, result.output
 
@@ -147,7 +147,7 @@ def test_upload_submission(working_dir_path, temp_config_file_path, remote_bucke
         temp_config_file_path,
     ]
     runner = CliRunner()
-    result = runner.invoke(grz_upload.cli.cli, testargs, catch_exceptions=False)
+    result = runner.invoke(grz_cli.cli.cli, testargs, catch_exceptions=False)
 
     # TODO implement
     # check if upload to S3 bucket is working correctly

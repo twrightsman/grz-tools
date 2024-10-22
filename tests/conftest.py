@@ -12,7 +12,7 @@ import pytest
 import yaml
 from moto import mock_aws
 
-from grz_upload.file_operations import Crypt4GH
+from grz_cli.file_operations import Crypt4GH
 
 config_path = "tests/mock_files/mock_config.yaml"
 small_file_input_path = "tests/mock_files/mock_small_input_file.txt"

@@ -2,7 +2,7 @@
 
 import json
 
-PACKAGE_ROOT = "grz_upload"
+PACKAGE_ROOT = "grz_cli"
 
 LOGGING_FORMAT = "%(asctime)s [%(levelname)s] %(name)s: %(message)s"
 LOGGING_DATEFMT = "%Y-%m-%d %I:%M %p"

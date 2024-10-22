@@ -1,4 +1,4 @@
-# GRZ Upload
+# GRZ CLI
 
 A tool to encrypt and upload files to S3 with MD5 checksum logging.
 
@@ -30,16 +30,16 @@ This tool provides a streamlined way to encrypt files using the `crypt4gh` libra
 
 ## Installation
 
-To install this package, download the `grz_upload.zip` file and install it using `pip`:
+To install this package, download the `grz_cli.zip` file and install it using `pip`:
 
 ```bash
-pip install grz_upload.zip
+pip install grz_cli.zip
 ```
 
 to test edits to the code, you can use
 
 ```bash
-pip install -e grz_upload.zip
+pip install -e grz_cli.zip
 ```
 
 ## Usage
@@ -101,9 +101,9 @@ This will discover and run all the test cases in the `tests` directory.
 ## Project Structure
 
 ```
-grz_upload/
+grz_cli/
 │
-├── grz_upload/
+├── grz_cli/
 │   ├── __init__.py
 │   ├── encrypt_upload.py
 │   ├── config.yaml

@@ -16,7 +16,7 @@ from botocore.config import Config as Boto3Config
 from tqdm.auto import tqdm
 from typing_extensions import override
 
-from grz_upload import parser
+from grz_cli import parser
 
 log = logging.getLogger(__name__)
 

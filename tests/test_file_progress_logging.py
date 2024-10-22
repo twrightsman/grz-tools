@@ -6,9 +6,9 @@ from pathlib import Path
 
 import pytest
 
-from grz_upload.file_operations import read_multiple_json
-from grz_upload.parser import SubmissionFileMetadata
-from grz_upload.progress_logging import FileProgressLogger
+from grz_cli.file_operations import read_multiple_json
+from grz_cli.parser import SubmissionFileMetadata
+from grz_cli.progress_logging import FileProgressLogger
 
 
 @pytest.fixture(scope="function")

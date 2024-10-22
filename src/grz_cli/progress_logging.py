@@ -8,8 +8,8 @@ import typing
 from os import PathLike
 from pathlib import Path
 
-from grz_upload.file_operations import read_multiple_json
-from grz_upload.parser import SubmissionFileMetadata
+from grz_cli.file_operations import read_multiple_json
+from grz_cli.parser import SubmissionFileMetadata
 
 Index = tuple[str, float, int]
 State = dict
