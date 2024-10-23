@@ -13,6 +13,7 @@ import yaml
 from moto import mock_aws
 
 from grz_cli.file_operations import Crypt4GH
+from grz_cli.models.config import ConfigModel
 
 config_path = "tests/mock_files/mock_config.yaml"
 small_file_input_path = "tests/mock_files/mock_small_input_file.bed"
@@ -193,7 +194,7 @@ def temp_metadata_file_path(temp_data_dir_path, temp_large_file_path) -> Path:
         metadata = json.load(fd)
 
     # insert large file
-    metadata["Donors"][0]["labData"][0]["sequenceData"][0]["files"][0]["filepath"] = (
+    metadata["Donors"][0]["labData"][0]["sequenceData"][0]["files"][0]["filePath"] = (
         str(temp_large_file_path)
     )
 
@@ -212,11 +213,18 @@ def config_content(
         "grz_public_key_path": str(crypt4gh_grz_public_key_file_path),
         "grz_private_key_path": str(crypt4gh_grz_private_key_file_path),
         "submitter_private_key_path": str(crypt4gh_grz_public_key_file_path),
-        "s3_url": "",
-        "s3_bucket": "testing",
-        "s3_access_key": "testing",
-        "s3_secret": "testing",
+        "s3_options": {
+            "endpoint_url": "",
+            "bucket": "testing",
+            "access_key": "testing",
+            "secret": "testing",
+        },
     }
+
+
+@pytest.fixture
+def config_model(config_content):
+    return ConfigModel(**config_content)
 
 
 @pytest.fixture
@@ -239,10 +247,10 @@ def crypt4gh_grz_public_keys(
 
 
 @pytest.fixture
-def aws_credentials(config_content):
+def aws_credentials(config_model):
     """Mocked AWS Credentials for moto."""
-    os.environ["AWS_ACCESS_KEY_ID"] = config_content["s3_access_key"]
-    os.environ["AWS_SECRET_ACCESS_KEY"] = config_content["s3_secret"]
+    os.environ["AWS_ACCESS_KEY_ID"] = config_model.s3_options.access_key
+    os.environ["AWS_SECRET_ACCESS_KEY"] = config_model.s3_options.secret
 
 
 @pytest.fixture
@@ -254,8 +262,8 @@ def boto_s3_client(aws_credentials):
 
 @mock_aws
 @pytest.fixture
-def remote_bucket(boto_s3_client, config_content):
+def remote_bucket(boto_s3_client, config_model):
     # create bucket
-    boto_s3_client.create_bucket(Bucket=config_content["s3_bucket"])
+    boto_s3_client.create_bucket(Bucket=config_model.s3_options.bucket)
 
-    return boto3.resource("s3").Bucket(config_content["s3_bucket"])
+    return boto3.resource("s3").Bucket(config_model.s3_options.bucket)

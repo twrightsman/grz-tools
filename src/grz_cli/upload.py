@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import abc
 import logging
-from collections.abc import Mapping
 from hashlib import sha256
 from os import PathLike
 from os.path import getsize
@@ -16,6 +15,8 @@ import boto3  # type: ignore[import-untyped]
 from boto3 import client as boto3_client  # type: ignore[import-untyped]
 from botocore.config import Config as Boto3Config  # type: ignore[import-untyped]
 from tqdm.auto import tqdm
+
+from .models.config import ConfigModel
 
 if TYPE_CHECKING:
     from .parser import EncryptedSubmission
@@ -81,28 +82,17 @@ class S3BotoUploadWorker(UploadWorker):
     MULTIPART_CHUNK_SIZE = 200 * 1024 * 1024  # 200 MB
     MAX_SINGLEPART_UPLOAD_SIZE = 5 * 1024 * 1024  # 5 MB
 
-    # TODO: s3_settings should have its own class
-    def __init__(
-        self, s3_settings: Mapping[str, str | None], status_file_path: str | PathLike
-    ):
+    def __init__(self, config: ConfigModel, status_file_path: str | PathLike):
         """
         An upload manager for S3 storage
 
-        :param s3_settings: settings for boto3 containing the following fields:
-            - s3_access_key (required)
-            - s3_secret (required)
-            - region_name
-            - api_version
-            - use_ssl
-            - s3_url
-            - s3_session_token
-            - proxy_url
+        :param config: instance of `ConfigModel`
         :param status_file_path: file for storing upload state. Can be used for e.g. resumable uploads.
         """
         super().__init__()
 
         self._status_file_path = Path(status_file_path)
-        self._s3_settings = s3_settings
+        self._config = config
 
         self._init_s3_client()
 
@@ -115,7 +105,7 @@ class S3BotoUploadWorker(UploadWorker):
                 return string
 
         # configure proxies if proxy_url is defined
-        proxy_url = empty_str_to_none(self._s3_settings.get("s3_session_token", None))
+        proxy_url = empty_str_to_none(self._config.s3_options.proxy_url)
         if proxy_url is not None:
             config = Boto3Config(proxies={"http": proxy_url, "https": proxy_url})
         else:
@@ -124,19 +114,13 @@ class S3BotoUploadWorker(UploadWorker):
         # Initialize S3 client for uploading
         self._s3_client: boto3.session.Session.client = boto3_client(
             service_name="s3",
-            region_name=empty_str_to_none(self._s3_settings.get("region_name", None)),
-            api_version=empty_str_to_none(self._s3_settings.get("api_version", None)),
-            use_ssl=empty_str_to_none(self._s3_settings.get("use_ssl", None)),
-            endpoint_url=empty_str_to_none(self._s3_settings.get("s3_url", None)),
-            aws_access_key_id=empty_str_to_none(
-                self._s3_settings.get("s3_access_key", None)
-            ),
-            aws_secret_access_key=empty_str_to_none(
-                self._s3_settings.get("s3_secret", None)
-            ),
-            aws_session_token=empty_str_to_none(
-                self._s3_settings.get("s3_session_token", None)
-            ),
+            region_name=empty_str_to_none(self._config.s3_options.region_name),
+            api_version=empty_str_to_none(self._config.s3_options.api_version),
+            use_ssl=empty_str_to_none(str(self._config.s3_options.use_ssl).lower()),
+            endpoint_url=empty_str_to_none(str(self._config.s3_options.endpoint_url)),
+            aws_access_key_id=empty_str_to_none(self._config.s3_options.access_key),
+            aws_secret_access_key=empty_str_to_none(self._config.s3_options.secret),
+            aws_session_token=empty_str_to_none(self._config.s3_options.session_token),
             config=config,
         )
 
@@ -157,7 +141,7 @@ class S3BotoUploadWorker(UploadWorker):
         :return: sha256 value for uploaded file
         """
         multipart_upload = self._s3_client.create_multipart_upload(
-            Bucket=self._s3_settings["s3_bucket"], Key=s3_object_id
+            Bucket=self._config.s3_options.bucket, Key=s3_object_id
         )
         upload_id = multipart_upload["UploadId"]
         parts = []
@@ -180,7 +164,7 @@ class S3BotoUploadWorker(UploadWorker):
                     original_sha256.update(chunk)
                     # Upload each chunk
                     part = self._s3_client.upload_part(
-                        Bucket=self._s3_settings["s3_bucket"],
+                        Bucket=self._config.s3_options.bucket,
                         Key=s3_object_id,
                         PartNumber=part_number,
                         UploadId=upload_id,
@@ -192,7 +176,7 @@ class S3BotoUploadWorker(UploadWorker):
 
             # Complete the multipart upload
             self._s3_client.complete_multipart_upload(
-                Bucket=self._s3_settings["s3_bucket"],
+                Bucket=self._config.s3_options.bucket,
                 Key=s3_object_id,
                 UploadId=upload_id,
                 MultipartUpload={"Parts": parts},
@@ -204,7 +188,7 @@ class S3BotoUploadWorker(UploadWorker):
             for i in format_exc().split("\n"):
                 log.error(i)
             self._s3_client.abort_multipart_upload(
-                Bucket=self._s3_settings["s3_bucket"],
+                Bucket=self._config.s3_options.bucket,
                 Key=s3_object_id,
                 UploadId=upload_id,
             )
@@ -225,7 +209,7 @@ class S3BotoUploadWorker(UploadWorker):
 
                 # Upload data
                 self._s3_client.put_object(
-                    Bucket=self._s3_settings["s3_bucket"], Key=s3_object_id, Body=fd
+                    Bucket=self._config.s3_options.bucket, Key=s3_object_id, Body=fd
                 )
             # return original_sha256.hexdigest()
         except Exception as e:

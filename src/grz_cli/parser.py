@@ -4,11 +4,12 @@ from __future__ import annotations
 
 import json
 import logging
-from collections.abc import Generator, Mapping
+from collections.abc import Generator
 from os import PathLike
 from pathlib import Path
 
 from .file_operations import Crypt4GH, calculate_sha256
+from .models.config import Backend, ConfigModel
 from .models.metadata import File as SubmissionFileMetadata
 from .models.metadata import GrzSubmissionMetadata
 from .upload import S3BotoUploadWorker
@@ -624,17 +625,17 @@ class Worker:
 
         return submission
 
-    def upload(self, s3_settings: Mapping[str, str]):
+    def upload(self, config: ConfigModel):
         """
         Upload an encrypted submission
 
         :return: EncryptedSubmission instance
         """
-        if s3_settings.get("use_s3cmd", False):
+        if config.s3_options.backend == Backend.s3cmd:
             raise NotImplementedError()
         else:
             upload_worker = S3BotoUploadWorker(
-                s3_settings, status_file_path=self.progress_file_upload
+                config, status_file_path=self.progress_file_upload
             )
 
         encrypted_submission = self.parse_encrypted_submission()

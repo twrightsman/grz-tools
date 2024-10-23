@@ -35,7 +35,7 @@ from ..file_operations import calculate_sha256
 
 class StrictBaseModel(BaseModel):
     model_config = ConfigDict(
-        extra="ignore",
+        extra="forbid",
         validate_assignment=True,
         use_enum_values=True,
         alias_generator=to_camel,

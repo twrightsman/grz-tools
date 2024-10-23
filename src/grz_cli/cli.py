@@ -4,6 +4,8 @@ CLI module for handling command-line interface operations.
 
 import logging
 import logging.config
+import sys
+from os import PathLike
 from pathlib import Path
 
 import click
@@ -11,6 +13,7 @@ import yaml
 
 from .constants import PACKAGE_ROOT
 from .logging_setup import add_filelogger
+from .models.config import ConfigModel
 from .parser import Worker
 
 # replace __MAIN__ with correct module name
@@ -241,12 +244,11 @@ def encrypt(  # noqa: PLR0913
     """
     Encrypt a submission using the GRZ public key.
     """
-    with open(config_file) as f:
-        config = yaml.safe_load(f)
+    config = read_config(config_file)
 
-    grz_pubkey_path = config["grz_public_key_path"]
+    grz_pubkey_path = config.grz_public_key_path
 
-    submitter_privkey_path = config.get("submitter_private_key_path", None)
+    submitter_privkey_path = config.submitter_private_key_path
     if submitter_privkey_path == "":
         submitter_privkey_path = None
 
@@ -368,10 +370,12 @@ def decrypt(  # noqa: PLR0913
     """
     Decrypt a submission using the GRZ private key.
     """
-    with open(config_file) as f:
-        config = yaml.safe_load(f)
+    config = read_config(config_file)
 
-    grz_privkey_path = config["grz_private_key_path"]
+    grz_privkey_path = config.grz_private_key_path
+    if not grz_privkey_path:
+        log.error("GRZ private key path is required for decryption.")
+        sys.exit(1)
 
     log.info("Starting encryption...")
 
@@ -485,8 +489,7 @@ def upload(
     :param working_dir: Path to a working directory where intermediate files can be stored
     :param config_file: The path to the configuration file.
     """
-    with open(config_file) as f:
-        config = yaml.safe_load(f)
+    config = read_config(config_file)
 
     log.info("Starting upload...")
     working_dir = Path(working_dir)
@@ -508,6 +511,14 @@ def upload(
     worker_inst.upload(config)
 
     log.info("Upload finished!")
+
+
+def read_config(config_path: str | PathLike) -> ConfigModel:
+    """Reads the configuration file and validates it against the schema."""
+    with open(config_path) as f:
+        config = ConfigModel(**yaml.safe_load(f))
+
+    return config
 
 
 if __name__ == "__main__":
