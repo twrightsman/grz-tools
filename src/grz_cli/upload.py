@@ -4,19 +4,22 @@ from __future__ import annotations
 
 import abc
 import logging
+from collections.abc import Mapping
 from hashlib import sha256
 from os import PathLike
 from os.path import getsize
 from pathlib import Path
 from traceback import format_exc
+from typing import TYPE_CHECKING
 
-import boto3
-from boto3 import client as boto3_client
-from botocore.config import Config as Boto3Config
+import boto3  # type: ignore[import-untyped]
+from boto3 import client as boto3_client  # type: ignore[import-untyped]
+from botocore.config import Config as Boto3Config  # type: ignore[import-untyped]
 from tqdm.auto import tqdm
 from typing_extensions import override
 
-from grz_cli import parser
+if TYPE_CHECKING:
+    from .parser import EncryptedSubmission
 
 log = logging.getLogger(__name__)
 
@@ -30,7 +33,7 @@ class UploadError(Exception):
 class UploadWorker(metaclass=abc.ABCMeta):
     """Worker baseclass for uploading encrypted submissions"""
 
-    def upload(self, encrypted_submission: parser.EncryptedSubmission):
+    def upload(self, encrypted_submission: EncryptedSubmission):
         """
         Upload an encrypted submission
 
@@ -81,7 +84,7 @@ class S3BotoUploadWorker(UploadWorker):
 
     # TODO: s3_settings should have its own class
     def __init__(
-        self, s3_settings: dict[str, str | None], status_file_path: str | PathLike
+        self, s3_settings: Mapping[str, str | None], status_file_path: str | PathLike
     ):
         """
         An upload manager for S3 storage

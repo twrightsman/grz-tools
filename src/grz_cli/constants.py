@@ -1,8 +1,5 @@
 """Constants for logging configuration, JSON schema validation, and other settings."""
 
-import json
-from importlib import resources as ir
-
 PACKAGE_ROOT = "grz_cli"
 
 LOGGING_FORMAT = "%(asctime)s [%(levelname)s] %(name)s: %(message)s"
@@ -38,10 +35,3 @@ LOGGING_CONFIG = {
         },
     },
 }
-
-GRZ_METADATA_JSONSCHEMA = json.loads(
-    ir.files(PACKAGE_ROOT)
-    .joinpath("resources")
-    .joinpath("grz-schema.json")
-    .read_text(encoding="utf-8")
-)

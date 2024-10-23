@@ -4,142 +4,16 @@ from __future__ import annotations
 
 import json
 import logging
-from collections.abc import Generator
-from dataclasses import dataclass
+from collections.abc import Generator, Mapping
 from os import PathLike
 from pathlib import Path
 
-import jsonschema
-
-from grz_cli.constants import GRZ_METADATA_JSONSCHEMA
-from grz_cli.file_operations import Crypt4GH, calculate_sha256
-from grz_cli.upload import S3BotoUploadWorker
+from .file_operations import Crypt4GH, calculate_sha256
+from .models.metadata import File as SubmissionFileMetadata
+from .models.metadata import GrzSubmissionMetadata
+from .upload import S3BotoUploadWorker
 
 log = logging.getLogger(__name__)
-
-
-@dataclass(frozen=True)
-class SubmissionFileMetadata:
-    """
-    Dataclass for submission file metadata. Contains the following properties:
-        - filePath: Path relative to the submission root, e.g.: sequencing_data/patient_001/patient_001_dna.bam
-        - fileType: Type of the file; one of: ["bam", "vcf", "bed", "fastq"]
-        - fileChecksum: Checksum of the file (expected value)
-        - fileSizeInBytes: Size of the file in bytes
-        - checksumType: Type of checksum algorithm used, defaults to "sha256"
-    """
-
-    file_path: Path
-    file_type: str
-    file_checksum: str
-    file_size_in_bytes: int
-    checksum_type: str = "sha256"
-
-    _SUPPORTED_CHECKSUM_TYPES = {"sha256"}
-    _VALID_FILE_TYPES = {"bam", "vcf", "bed", "fastq"}
-    _EXTENSION_ASSOCIATIONS = {
-        "bam": {".bam"},
-        "vcf": {".vcf", ".vcf.gz", ".vcf.bgz", ".bcv"},
-        "bed": {".bed", ".bed.gz"},
-        "fastq": {".fastq", ".fastq.gz"},
-    }
-
-    def validate_metadata(self) -> Generator[str]:
-        """
-        Validates whether the metadata is correct and yields errors in the metadata.
-        :return: Generator of strings describing the errors
-        """
-        # check if checksum type is correct
-        if self.checksum_type not in self._SUPPORTED_CHECKSUM_TYPES:
-            yield (
-                f"{str(self.file_path)}: Unsupported checksum type: {self.checksum_type}. "
-                f"Supported types: {self._SUPPORTED_CHECKSUM_TYPES}"
-            )
-
-        # check if file type is correct
-        if self.file_type not in self._VALID_FILE_TYPES:
-            yield f"Unsupported file type: {self.file_type}"
-
-        # check if file extension is correct
-        extensions = self._EXTENSION_ASSOCIATIONS[self.file_type]
-        if not any(str(self.file_path).endswith(suffix) for suffix in extensions):
-            yield (
-                f"{str(self.file_path)}: Unsupported VCF file extensions! "
-                f"Valid extensions: {', '.join(extensions)}"
-            )
-
-    def validate_data(self, local_file_path: Path) -> Generator[str]:
-        """
-        Validates whether the provided file matches this metadata.
-
-        :param local_file_path: Path to the actual file (resolved if symlinked)
-        :return: Generator of errors
-        """
-        # Resolve file path
-        local_file_path = local_file_path.resolve()
-
-        # Check if path exists
-        if not local_file_path.exists():
-            yield f"{str(self.file_path)} does not exist!"
-            # Return here as following tests cannot work
-            return
-
-        # Check if path is a file
-        if not local_file_path.is_file():
-            yield f"{str(self.file_path)} is not a file!"
-            # Return here as following tests cannot work
-            return
-
-        # Check if the checksum is correct
-        if self.checksum_type == "sha256":
-            calculated_checksum = calculate_sha256(local_file_path)
-            if self.file_checksum != calculated_checksum:
-                yield (
-                    f"{str(self.file_path)}: Checksum mismatch! "
-                    f"Expected: '{self.file_checksum}', calculated: '{calculated_checksum}'."
-                )
-        else:
-            yield (
-                f"{str(self.file_path)}: Unsupported checksum type: {self.checksum_type}. "
-                f"Supported types: {self._SUPPORTED_CHECKSUM_TYPES}"
-            )
-
-        # Check file size
-        if self.file_size_in_bytes != local_file_path.stat().st_size:
-            yield (
-                f"{str(self.file_path)}: File size mismatch! "
-                f"Expected: '{self.file_size_in_bytes}', observed: '{local_file_path.stat().st_size}'."
-            )
-
-    @classmethod
-    def from_json_dict(cls, data: dict):
-        """
-        Create a SubmissionFileMetadata object from a JSON-like dictionary.
-
-        :param data: JSON-like dictionary
-        """
-        required_keys = {"filePath", "fileType", "fileChecksum", "fileSizeInBytes"}
-        missing_keys = required_keys - data.keys()
-        if missing_keys:
-            raise ValueError(f"Missing required keys: {', '.join(missing_keys)}")
-
-        return cls(
-            file_path=Path(data["filePath"]),
-            file_type=data["fileType"],
-            file_checksum=data["fileChecksum"],
-            file_size_in_bytes=data["fileSizeInBytes"],
-            checksum_type=data.get("checksumType", "sha256"),
-        )
-
-    def to_json_dict(self) -> dict:
-        """Build a JSON-like dictionary from the object."""
-        return {
-            "filePath": str(self.file_path),
-            "fileType": self.file_type,
-            "fileChecksum": self.file_checksum,
-            "fileSizeInBytes": self.file_size_in_bytes,
-            "checksumType": self.checksum_type,
-        }
 
 
 class SubmissionMetadata:
@@ -159,13 +33,10 @@ class SubmissionMetadata:
         self.content = self._read_metadata(self.file_path)
         self._checksum = calculate_sha256(self.file_path, progress=False)
 
-        # Possibly raises exception
-        self._validate_schema()
-
         self._files = None
 
     @classmethod
-    def _read_metadata(cls, file_path: Path) -> dict:
+    def _read_metadata(cls, file_path: Path) -> GrzSubmissionMetadata:
         """
         Load and parse the metadata file in JSON format.
 
@@ -176,24 +47,10 @@ class SubmissionMetadata:
         try:
             with open(file_path, encoding="utf-8") as jsonfile:
                 metadata = json.load(jsonfile)
-                return metadata
+                metadata_model = GrzSubmissionMetadata(**metadata)
+                return metadata_model
         except json.JSONDecodeError as e:
             cls.__log.error("Invalid JSON format in metadata file: %s", file_path)
-            raise e
-
-    def _validate_schema(self, schema=GRZ_METADATA_JSONSCHEMA):
-        """
-        Validate the schema of the content
-
-        :param schema: path to JSON schema file
-        :raises jsonschema.exceptions.ValidationError: if schema does not match expected schema
-        """
-        try:
-            jsonschema.validate(self.content, schema=schema)
-        except jsonschema.exceptions.ValidationError as e:
-            self.__log.error(
-                "Invalid JSON schema in metadata file '%s'", self.file_path
-            )
             raise e
 
     @property
@@ -201,7 +58,7 @@ class SubmissionMetadata:
         """
         The index case ID of this submission
         """
-        return self.content["Submission"]["indexCaseId"]
+        return self.content.submission.index_case_id
 
     @property
     def files(self) -> dict[Path, SubmissionFileMetadata]:
@@ -215,13 +72,11 @@ class SubmissionMetadata:
             return self._files
 
         submission_files = {}
-        for donor in self.content.get("Donors", []):
-            for lab_data in donor.get("labData", []):
-                for sequence_data in lab_data.get("sequenceData", []):
-                    for file_data in sequence_data.get("files", []):
-                        file_metadata = SubmissionFileMetadata.from_json_dict(file_data)
-
-                        submission_files[file_metadata.file_path] = file_metadata
+        for donor in self.content.donors:
+            for lab_data in donor.lab_data:
+                for sequence_data in lab_data.sequence_data:
+                    for file_data in sequence_data.files:
+                        submission_files[Path(file_data.file_path)] = file_data
 
         self._files = submission_files
         return self._files
@@ -233,29 +88,24 @@ class SubmissionMetadata:
         :return: Generator of errors
         """
         submission_files: dict[str | PathLike, SubmissionFileMetadata] = {}
-        for donor in self.content.get("Donors", []):
-            for lab_data in donor.get("labData", []):
-                for sequence_data in lab_data.get("sequenceData", []):
-                    for file_data in sequence_data.get("files", []):
-                        file_metadata = SubmissionFileMetadata.from_json_dict(file_data)
-
+        for donor in self.content.donors:
+            for lab_data in donor.lab_data:
+                for sequence_data in lab_data.sequence_data:
+                    for file_data in sequence_data.files:
                         # check if file is already registered
-                        if other_metadata := submission_files.get(
-                            file_metadata.file_path
-                        ):
+                        file_path = Path(file_data.file_path)
+                        if other_metadata := submission_files.get(file_path):
                             # check if metadata matches
-                            if file_metadata != other_metadata:
-                                yield f"{file_metadata.file_path}: Different metadata for the same path observed!"
+                            if file_data != other_metadata:
+                                yield f"{file_data.file_path}: Different metadata for the same path observed!"
 
                             # check if FASTQ data was already linked in another submission
-                            if file_metadata.file_type == "fastq":
-                                yield f"{file_metadata.file_path}: FASTQ file already linked in another submission!"
-                            if file_metadata.file_type == "bam":
-                                yield f"{file_metadata.file_path}: BAM file already linked in another submission!"
+                            if file_data.file_type == "fastq":
+                                yield f"{file_data.file_path}: FASTQ file already linked in another submission!"
+                            if file_data.file_type == "bam":
+                                yield f"{file_data.file_path}: BAM file already linked in another submission!"
                         else:
-                            submission_files[file_metadata.file_path] = file_metadata
-                            # check if the file metadata itself is correct
-                            yield from file_metadata.validate_metadata()
+                            submission_files[file_path] = file_data
 
     @property
     def checksum(self) -> str:
@@ -303,7 +153,7 @@ class Submission:
 
         :return: Generator of errors
         """
-        from grz_cli.progress_logging import FileProgressLogger
+        from .progress_logging import FileProgressLogger
 
         progress_logger = FileProgressLogger(log_file_path=progress_log_file)
         # cleanup log file and keep only files listed here
@@ -391,7 +241,7 @@ class Submission:
             )
             encrypted_files_dir.mkdir(mode=0o770, parents=False, exist_ok=False)
 
-        from grz_cli.progress_logging import FileProgressLogger
+        from .progress_logging import FileProgressLogger
 
         progress_logger = FileProgressLogger(log_file_path=progress_log_file)
 
@@ -531,7 +381,7 @@ class EncryptedSubmission:
             )
             files_dir.mkdir(mode=0o770, parents=False, exist_ok=False)
 
-        from grz_cli.progress_logging import FileProgressLogger
+        from .progress_logging import FileProgressLogger
 
         progress_logger = FileProgressLogger(log_file_path=progress_log_file)
 
@@ -774,7 +624,7 @@ class Worker:
 
         return submission
 
-    def upload(self, s3_settings: dict[str, str]):
+    def upload(self, s3_settings: Mapping[str, str]):
         """
         Upload an encrypted submission
 

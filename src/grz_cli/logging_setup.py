@@ -10,7 +10,7 @@ import logging
 from os import PathLike
 from pathlib import Path
 
-from grz_cli.constants import LOGGING_DATEFMT, LOGGING_FORMAT, PACKAGE_ROOT
+from .constants import LOGGING_DATEFMT, LOGGING_FORMAT, PACKAGE_ROOT
 
 log = logging.getLogger(__name__)
 

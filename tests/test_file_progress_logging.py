@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 
 from grz_cli.file_operations import read_multiple_json
-from grz_cli.parser import SubmissionFileMetadata
+from grz_cli.models.metadata import File as SubmissionFileMetadata
 from grz_cli.progress_logging import FileProgressLogger
 
 
@@ -32,7 +32,7 @@ def temp_log_file_path(test_dir_path) -> Path:
 @pytest.fixture
 def temp_data_file_path(test_dir_path) -> Path:
     """Fixture to create a temporary file to track."""
-    temp_file = test_dir_path / "data.txt"
+    temp_file = test_dir_path / "data.bed"
     with open(temp_file, "w") as fd:
         fd.write("asdf")
 
@@ -48,7 +48,7 @@ def temp_file_metadata_dict(temp_data_file_path):
 
     return {
         "filePath": str(temp_data_file_path),
-        "fileType": "txt",
+        "fileType": "bed",
         "fileChecksum": sha256sum,
         "fileSizeInBytes": stat.st_size,
         "checksumType": "sha256",
@@ -57,7 +57,7 @@ def temp_file_metadata_dict(temp_data_file_path):
 
 @pytest.fixture
 def temp_data_file_metadata(temp_file_metadata_dict):
-    return SubmissionFileMetadata.from_json_dict(temp_file_metadata_dict)
+    return SubmissionFileMetadata(**temp_file_metadata_dict)
 
 
 @pytest.fixture
@@ -77,7 +77,7 @@ def test_set_and_get_state(
     state = {"progress": 50, "status": "in_progress"}
     logger.set_state(
         file_path=temp_data_file_path,
-        file_metadata=temp_file_metadata_dict,
+        file_metadata=SubmissionFileMetadata(**dict(temp_file_metadata_dict)),
         state=state,
     )
 
@@ -101,12 +101,14 @@ def test_get_state_file_not_tracked(
     # Retrieve the state
     retrieved_state = logger.get_state(
         temp_data_file_path,
-        file_metadata={
-            "filePath": "",
-            "fileType": "",
-            "fileChecksum": "",
-            "fileSizeInBytes": -1,
-        },
+        file_metadata=SubmissionFileMetadata(
+            **{
+                "filePath": "foo",
+                "fileType": "bed",
+                "fileChecksum": "b5bb9d8014a0f9b1d61e21e796d78dccdf1352f23cd32812f4850b878ae4944c",
+                "fileSizeInBytes": 0,
+            }
+        ),
     )
     assert retrieved_state is None
 
@@ -133,7 +135,7 @@ def test_persist_state_to_json(
             "file_path": str(temp_data_file_path),
             "modification_time": temp_data_file_path.stat().st_mtime,
             "size": temp_data_file_path.stat().st_size,
-            "metadata": temp_data_file_metadata.to_json_dict(),
+            "metadata": temp_data_file_metadata.model_dump(by_alias=True),
             "state": {"progress": 75, "status": "completed"},
         }
 
@@ -163,7 +165,7 @@ def test_read_existing_log(
                 "file_path": str(temp_data_file_path),
                 "modification_time": temp_data_file_path.stat().st_mtime,
                 "size": temp_data_file_path.stat().st_size,
-                "metadata": temp_data_file_metadata.to_json_dict(),
+                "metadata": temp_data_file_metadata.model_dump(by_alias=True),
                 "state": {"progress": 0, "status": "started"},
             },
             fd,
@@ -174,7 +176,7 @@ def test_read_existing_log(
                 "file_path": str(temp_data_file_path),
                 "modification_time": temp_data_file_path.stat().st_mtime,
                 "size": temp_data_file_path.stat().st_size,
-                "metadata": temp_data_file_metadata.to_json_dict(),
+                "metadata": temp_data_file_metadata.model_dump(by_alias=True),
                 "state": {"progress": 25, "status": "in-progress"},
             },
             fd,

@@ -15,7 +15,7 @@ from moto import mock_aws
 from grz_cli.file_operations import Crypt4GH
 
 config_path = "tests/mock_files/mock_config.yaml"
-small_file_input_path = "tests/mock_files/mock_small_input_file.txt"
+small_file_input_path = "tests/mock_files/mock_small_input_file.bed"
 metadata_path = "tests/mock_files/example_metadata.json"
 
 crypt4gh_grz_private_key_file = "tests/mock_files/grz_mock_private_key.sec"
@@ -102,7 +102,7 @@ def create_large_file(
 
 @pytest.fixture
 def temp_large_file_path(temp_data_dir_path) -> Path:
-    temp_large_file_path = temp_data_dir_path / "temp_large_input_file.txt"
+    temp_large_file_path = temp_data_dir_path / "temp_large_input_file.bed"
     target_size = 1024 * 1024 * 6  # create 5MB file, multiupload limit is 5MB
 
     with open(small_file_input_path) as fd:

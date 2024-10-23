@@ -47,7 +47,7 @@ def test_boto_upload(
         s3_settings=config, status_file_path=temp_upload_log_file_path
     )
 
-    upload_worker.upload_file(temp_small_file_path, "small_test_file.txt")
+    upload_worker.upload_file(temp_small_file_path, "small_test_file.bed")
     upload_worker.upload_file(temp_fastq_file_path, "large_test_file.fastq")
 
     # download files again
@@ -55,7 +55,7 @@ def test_boto_upload(
     local_tmpdir_path = Path(local_tmpdir.strpath)
 
     download_file(
-        remote_bucket, "small_test_file.txt", local_tmpdir_path / "small_test_file.txt"
+        remote_bucket, "small_test_file.bed", local_tmpdir_path / "small_test_file.bed"
     )
     download_file(
         remote_bucket,
@@ -64,7 +64,7 @@ def test_boto_upload(
     )
 
     assert (
-        calculate_sha256(local_tmpdir_path / "small_test_file.txt")
+        calculate_sha256(local_tmpdir_path / "small_test_file.bed")
         == temp_small_file_sha256sum
     )
     assert (

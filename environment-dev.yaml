@@ -16,3 +16,4 @@ dependencies:
   - pytest-mock
   - moto
   - numpy
+  - pydantic >=2.9.2

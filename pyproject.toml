@@ -20,7 +20,8 @@ dependencies = [
     "crypt4gh",
     "jsonschema",
     "pyyaml",
-    "tqdm"
+    "tqdm",
+    "pydantic>=2.9.2",
 ]
 classifiers = [
     "Programming Language :: Python :: 3",
@@ -58,7 +59,10 @@ test = [
 ]
 lint = [
     "ruff",
-    "mypy"
+    "mypy",
+    "types-pyyaml",
+    "types-tqdm",
+    "pydantic"
 ]
 
 [tool.ruff]
@@ -130,13 +134,19 @@ max-complexity = 10
 "__init__.py" = [
     "D",
 ]
+"src/grz_cli/models/metadata.py" = [
+    "D100",
+    "D101",
+    "D102",
+    "N805"
+]
 
 [tool.ruff.lint.pydocstyle]
 convention = "pep257"
 
 [tool.tox]
 requires = ["tox>=4.23"]
-env_list = ["format-check", "lints", "3.10", "3.11", "3.12"]
+env_list = ["format-check", "lints", "mypy", "3.10", "3.11", "3.12"]
 allowlist_externals = ["pytest", "ruff"]
 isolated_build = true
 
@@ -154,3 +164,23 @@ commands = [["ruff", "format", "--check"]]
 skip_install = true
 dependency_groups = ["lint"]
 commands = [["ruff", "check"]]
+
+[tool.tox.env."mypy"]
+skip_install = false
+dependency_groups = ["lint"]
+commands = [["mypy"]]
+
+[tool.uv]
+dev-dependencies = [
+    "datamodel-code-generator>=0.26.2",
+    "mypy>=1.13.0",
+    "tox>=4.23.2",
+    "types-pyyaml>=6.0.12.20240917",
+    "types-tqdm>=4.66.0.20240417",
+]
+
+[tool.mypy]
+python_version = "3.12"
+plugins = "pydantic.mypy"
+packages = "src"
+

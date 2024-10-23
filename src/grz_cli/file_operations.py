@@ -18,9 +18,9 @@ from os.path import getsize
 from pathlib import Path
 from typing import TextIO
 
-import crypt4gh.header
-import crypt4gh.keys
-import crypt4gh.lib
+import crypt4gh.header  # type: ignore[import-untyped]
+import crypt4gh.keys  # type: ignore[import-untyped]
+import crypt4gh.lib  # type: ignore[import-untyped]
 from nacl.public import PrivateKey
 from tqdm.auto import tqdm
 

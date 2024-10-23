@@ -8,8 +8,8 @@ import typing
 from os import PathLike
 from pathlib import Path
 
-from grz_cli.file_operations import read_multiple_json
-from grz_cli.parser import SubmissionFileMetadata
+from .file_operations import read_multiple_json
+from .models.metadata import File as SubmissionFileMetadata
 
 Index = tuple[str, float, int]
 State = dict
@@ -23,7 +23,7 @@ class FileProgressLogger:
 
     _index = {"file_path": str, "modification_time": float, "size": int}
     # mapping of index -> (metadata, data)
-    _file_states: dict[Index, tuple[dict | SubmissionFileMetadata, State]]
+    _file_states: dict[Index, tuple[SubmissionFileMetadata, State]]
 
     def __init__(self, log_file_path: str | PathLike):
         """
@@ -62,7 +62,7 @@ class FileProgressLogger:
             else:
                 raise ValueError(f"Path is not a file: '{str(self._file_path)}'")
 
-    def cleanup(self, keep: list[tuple[PathLike, dict | SubmissionFileMetadata]]):
+    def cleanup(self, keep: list[tuple[PathLike, SubmissionFileMetadata]]):
         """
         Removes all entries from the log file and in-memory state that are not in the keep list.
 
@@ -72,7 +72,7 @@ class FileProgressLogger:
         for file, file_metadata in keep:
             state = self.get_state(file, file_metadata)
             if state is not None:
-                self.set_state(file, file_metadata, self.get_state(file, file_metadata))
+                self.set_state(file, file_metadata, state)
 
     def _get_index(self, file_path: str | PathLike) -> Index:
         """
@@ -106,19 +106,18 @@ class FileProgressLogger:
         file_path = Path(file_path)
         index = self._get_index(file_path)
 
-        # convert to metadata object if necessary
-        if not isinstance(file_metadata, SubmissionFileMetadata):
-            file_metadata = SubmissionFileMetadata.from_json_dict(file_metadata)
-
         # get stored state
         stored_metadata, stored_data = self._file_states.get(index, (None, None))
 
         # check if metadata matches
-        if stored_metadata is not None:
-            # convert stored_metadata to SubmissionFileMetadata
-            stored_metadata = SubmissionFileMetadata.from_json_dict(stored_metadata)
-            if file_metadata == stored_metadata:
-                return copy.deepcopy(stored_data)
+        if file_metadata and not isinstance(file_metadata, SubmissionFileMetadata):
+            file_metadata = SubmissionFileMetadata(**file_metadata)
+
+        if stored_metadata and not isinstance(stored_metadata, SubmissionFileMetadata):
+            stored_metadata = SubmissionFileMetadata(**stored_metadata)
+
+        if stored_metadata and file_metadata == stored_metadata:
+            return copy.deepcopy(stored_data)
         # metadata mismatch -> no valid stored state -> return None
         return None
 
@@ -140,12 +139,12 @@ class FileProgressLogger:
         file_path = Path(file_path)
         index = self._get_index(file_path)
 
-        # convert to metadata object if necessary
-        if not isinstance(file_metadata, SubmissionFileMetadata):
-            file_metadata = SubmissionFileMetadata.from_json_dict(file_metadata)
+        if file_metadata and not isinstance(file_metadata, SubmissionFileMetadata):
+            file_metadata = SubmissionFileMetadata(**file_metadata)
+        file_metadata = typing.cast(SubmissionFileMetadata, file_metadata)
 
         # Update state in memory
-        self._file_states[index] = (file_metadata.to_json_dict(), state)
+        self._file_states[index] = (file_metadata, state)
 
         # Persist state to JSON log file
         with open(self._file_path, "a", newline="") as fd:
@@ -155,7 +154,7 @@ class FileProgressLogger:
                     # index keys
                     **{k: v for k, v in zip(self._index.keys(), index, strict=True)},
                     # state
-                    "metadata": file_metadata.to_json_dict(),
+                    "metadata": file_metadata.model_dump(by_alias=True),
                     "state": state,
                 },
                 fd,

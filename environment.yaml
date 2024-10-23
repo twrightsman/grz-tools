@@ -11,3 +11,4 @@ dependencies:
   - python-crypt4gh
   - tqdm
   - jsonschema
+  - pydantic >=2.9.2

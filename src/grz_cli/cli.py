@@ -9,9 +9,9 @@ from pathlib import Path
 import click
 import yaml
 
-from grz_cli.constants import PACKAGE_ROOT
-from grz_cli.logging_setup import add_filelogger
-from grz_cli.parser import Worker
+from .constants import PACKAGE_ROOT
+from .logging_setup import add_filelogger
+from .parser import Worker
 
 # replace __MAIN__ with correct module name
 log = logging.getLogger(PACKAGE_ROOT + ".cli")
