@@ -14,7 +14,6 @@ authors = [
     { name = "Florian R. Hölzlwimmer", email = "git.ich@frhoelzlwimmer.de" },
 ]
 dependencies = [
-    "typing-extensions",
     "boto3",
     "click",
     "crypt4gh",
@@ -28,7 +27,7 @@ classifiers = [
     "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent"
 ]
-requires-python = ">=3.10"
+requires-python = ">=3.12"
 keywords = ["encryption", "S3", "checksum", "upload"]
 
 [project.urls]
@@ -146,7 +145,7 @@ convention = "pep257"
 
 [tool.tox]
 requires = ["tox>=4.23"]
-env_list = ["format-check", "lints", "mypy", "3.10", "3.11", "3.12"]
+env_list = ["format-check", "lints", "mypy", "3.12"]
 allowlist_externals = ["pytest", "ruff"]
 isolated_build = true
 

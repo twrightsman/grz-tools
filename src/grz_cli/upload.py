@@ -10,13 +10,12 @@ from os import PathLike
 from os.path import getsize
 from pathlib import Path
 from traceback import format_exc
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, override
 
 import boto3  # type: ignore[import-untyped]
 from boto3 import client as boto3_client  # type: ignore[import-untyped]
 from botocore.config import Config as Boto3Config  # type: ignore[import-untyped]
 from tqdm.auto import tqdm
-from typing_extensions import override
 
 if TYPE_CHECKING:
     from .parser import EncryptedSubmission
@@ -234,6 +233,11 @@ class S3BotoUploadWorker(UploadWorker):
 
     @override
     def upload_file(self, local_file_path, s3_object_id):
+        """
+        Upload a single file to the specified object ID
+        :param local_file_path: Path to the file to upload
+        :param s3_object_id: Remote S3 object ID under which the file should be stored
+        """
         self.__log.info(f"Uploading {local_file_path} to {s3_object_id}...")
 
         # Get the file size to decide whether to use multipart upload
