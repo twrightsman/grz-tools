@@ -2,18 +2,18 @@ name: grz-upload-client-dev
 channels:
   - conda-forge
   - bioconda
+  - nodefaults
 dependencies:
   - python >=3.12
-  - typing-extensions
-  - boto3
-  - pyyaml
-  - click
-  - python-crypt4gh
-  - tqdm
-  - jsonschema
+  - boto3 =1.35.39
+  - pyyaml =6.0.2
+  - click =8.1.7
+  - python-crypt4gh =1.7
+  - tqdm =4.66.5
+  - jsonschema =4.23.0
+  - pydantic =2.9.2
   # packages required for development
-  - pytest
-  - pytest-mock
-  - moto
-  - numpy
-  - pydantic >=2.9.2
+  - pytest =8.3.3
+  - pytest-mock =5.0.0
+  - moto =5.0.16
+  - numpy =2.1.2
