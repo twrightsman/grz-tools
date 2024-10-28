@@ -10,8 +10,8 @@ from pathlib import Path
 
 from .file_operations import Crypt4GH, calculate_sha256
 from .models.config import Backend, ConfigModel
-from .models.metadata import File as SubmissionFileMetadata
-from .models.metadata import GrzSubmissionMetadata
+from .models.v1_0_0.metadata import File as SubmissionFileMetadata
+from .models.v1_0_0.metadata import GrzSubmissionMetadata
 from .upload import S3BotoUploadWorker
 
 log = logging.getLogger(__name__)
@@ -59,7 +59,7 @@ class SubmissionMetadata:
         """
         The index case ID of this submission
         """
-        return self.content.submission.index_case_id
+        return self.content.submission.tan_g
 
     @property
     def files(self) -> dict[Path, SubmissionFileMetadata]:

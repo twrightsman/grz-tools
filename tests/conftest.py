@@ -194,7 +194,7 @@ def temp_metadata_file_path(temp_data_dir_path, temp_large_file_path) -> Path:
         metadata = json.load(fd)
 
     # insert large file
-    metadata["Donors"][0]["labData"][0]["sequenceData"][0]["files"][0]["filePath"] = (
+    metadata["donors"][0]["labData"][0]["sequenceData"][0]["files"][0]["filePath"] = (
         str(temp_large_file_path)
     )
 

@@ -1,13 +1,14 @@
 {
-    "$schema": "TBD",
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "version": "1.0.0",
     "title": "Metadata Submission Genomic Data Center (GRZ)",
     "description": "General metadata schema for submissions to the GRZ",
     "type": "object",
-    "required": ["Submission", "Donors"],
+    "required": ["submission", "donors"],
     "properties": {
-        "Submission": {
+        "submission": {
             "type": "object",
-            "required": ["submissionDate", "submissionType", "indexCaseId", "submitterId", "GenomicDataCenterId", "labName"],
+            "required": ["submissionDate", "submissionType", "tanG", "submitterId", "genomicDataCenterId", "clinicalDataNodeId", "genomicStudyType", "genomicStudySubtype", "labName"],
             "properties": {
                 "submissionDate": {
                     "type": "string",
@@ -16,113 +17,133 @@
                 },
                 "submissionType": {
                     "type": "string",
-                    "description": "\"initial\" for first submission, \"addition\" for additional submission, \"correction\" for correction",
-                    "enum": ["initial", "addition", "correction", "other"]
+                    "description": "The options are: 'initial' for first submission, 'followup' is for followup submissions, 'addition' for additional submission, 'correction' for correction",
+                    "enum": ["initial", "followup", "addition", "correction"]
                 },
-                "indexCaseId": {
+                "tanG": {
                     "type": "string",
-                    "description": "The VNg provided by RKI --> a unique 32-byte hex ID for the index case.",
-                    "format": "^[a-fA-F0-9]{32}$"
+                    "description": "The VNg of the genomic data of the patient that will be reimbursed --> a unique 32-byte hex ID.",
+                    "pattern": "^[a-fA-F0-9]{32}$"
+                },
+                "localCaseId": {
+                    "type": "string",
+                    "description": "A local case identifier for synchronizing locally"
                 },
                 "submitterId": {
                     "type": "string",
-                    "description": "Institutional ID of the submitter according to §293 SGB V",
-                    "format": "^[0-9]{9}$"
+                    "description": "Institutional ID of the submitter according to §293 SGB V.",
+                    "pattern": "^[0-9]{9}$"
                 },
-                "GenomicDataCenterId": {
+                "genomicDataCenterId": {
                     "type": "string",
-                    "description": "ID of the genomic data center node in format GRZXXXnnn",
-                    "format": "^GRZ[0-9]{6}$"
+                    "description": "ID of the genomic data center in the format GRZXXXnnn.",
+                    "pattern": "^(GRZ|KDK)[A-Z0-9]{3}[0-9]{3}$"
+                },
+                "clinicalDataNodeId": {
+                    "type": "string",
+                    "description": "ID of the genomic data center in the format KDKXXXnnn.",
+                    "pattern": "^(GRZ|KDK)[A-Z0-9]{3}[0-9]{3}$"
+                },
+                "genomicStudyType": {
+                    "type": "string",
+                    "description": "whether additional persons are tested as well",
+                    "enum": ["single", "duo", "trio"]
+                },
+                "genomicStudySubtype": {
+                    "type": "string",
+                    "description": "whether tumor and/or germ-line are tested",
+                    "enum": ["tumor-only", "tumor+germline", "germline-only"]
                 },
                 "labName": {
                     "type": "string",
-                    "description": "Name of the sequencing lab"
+                    "description": "Name of the sequencing lab."
                 }
             }
         },
-        "Donors": {
+        "donors": {
             "type": "array",
-            "description": "List of donors",
+            "description": "List of donors including the index patient.",
             "items": {
                 "type": "object",
                 "required": [
-                    "caseID",
-                    "gender",
+                    "caseId",
+                    "sex",
                     "relation",
-                    "MVConsentDate",
-                    "MVConsentVersion",
-                    "MVConsentScope",                 
+                    "mvConsentDate",
+                    "mvConsentVersion",
+                    "mvConsentScope",
                     "labData"
                 ],
                 "properties": {
-                    "caseID": {
+                    "caseId": {
                         "type": "string",
-                        "description": "The VNg provided by RKI --> a unique 32-byte hex ID for the given donor.",
-                        "format": "^[a-fA-F0-9]{32}$"
+                        "description": "The VNg of the genomic data of the donor --> a unique 32-byte hex ID.",
+                        "pattern": "^[a-fA-F0-9]{32}$"
                     },
-                    "gender": {
+                    "sex": {
                         "type": "string",
-                        "description": "Gender of the donor",
+                        "description": "Gender of the donor.",
                         "enum": ["male", "female", "other", "unknown"]
                     },
                     "relation": {
                         "type": "string",
-                        "description": "Relation of the patient to the pedigree e.g. 'index', 'brother', etc."
+                        "description": "Relationship of the donor in respect to the index patient, e.g. 'index', 'brother', 'mother', etc.",
+                        "enum": ["mother", "father", "brother", "sister", "child", "self"]
                     },
-                    "MVConsentDate": {
+                    "mvConsentDate": {
                         "type": "string",
                         "description": "Date of the signature of the Modellvorhaben consent; Date in ISO 8601 format YYYY-MM-DD",
                         "format": "date"
                     },
-                    "MVConsentPresentedDate": {
+                    "mvConsentPresentedDate": {
                         "type": "string",
                         "description": "Date of the presentation of the Modellvorhaben consent; Date in ISO 8601 format YYYY-MM-DD",
                         "format": "date"
                     },
-                    "MVConsentVersion": {
+                    "mvConsentVersion": {
                         "type": "string",
                         "description": "Version of the research consent"
                     },
-                    "MVConsentScope": {
+                    "mvConsentScope": {
                         "type": "object",
-                        "description": "the scope of the Modellvorhaben scope given by the patient",
-                        "required": ["ConsentMVSequencing", "ConsentCaseIdentification", "ConsentReIdentification"], 
-                            "properties": {
-                                "ConsentMVSequencing": {
+                        "description": "The scope of the Modellvorhaben consent given by the donor.",
+                        "required": ["consentMvSequencing", "consentCaseIdentification", "consentReIdentification"],
+                        "properties": {
+                            "consentMvSequencing": {
                                 "type": "boolean",
-                                "description": "The patient's consent to participate in the Modellvorhaben and sequencing"
-                                }, 
-                                "ConsentCaseIdentification": {
+                                "description": "The donor's consent to participate in the Modellvorhaben and sequencing."
+                            },
+                            "consentCaseIdentification": {
                                 "type": "boolean",
-                                "description": "The patient's consent to identify the case"
-                                },
-                                "ConsentReIdentification": {
+                                "description": "The donor's consent to identify the case."
+                            },
+                            "consentReIdentification": {
                                 "type": "boolean",
-                                "description": "The patient's consent to re-identify the case and to re-contact the patient in case of new findings"
-                                } 
+                                "description": "The donor's consent to be re-identified and to be re-contacted in case of new findings."
+                            }
                         }
                     },
-                    "MVConsentTerminationDate": {
+                    "mvConsentTerminationDate": {
                         "type": "string",
                         "description": "Date of the termination of the Modellvorhaben consent; Date in ISO 8601 format YYYY-MM-DD",
                         "format": "date"
                     },
-                    "MVConsentTerminationScope": {
+                    "mvConsentTerminationScope": {
                         "type": "object",
-                        "description": "The scope of the termination of the Modellvorhaben consent",
+                        "description": "The scope of the termination of the Modellvorhaben consent.",
                         "properties": {
-                                "ConsentMVSequencingTermination": {
+                            "consentMvSequencingTermination": {
                                 "type": "boolean",
                                 "description": "The patient's termination of the Modellvorhaben consent to participate in the Modellvorhaben and sequencing"
-                                }, 
-                                "ConsentCaseIdentificationTermination": {
+                            },
+                            "consentCaseIdentificationTermination": {
                                 "type": "boolean",
                                 "description": "The patient's termination of the Modellvorhaben consent to identify the case"
-                                },
-                                "ConsentReIdentificationTermination": {
+                            },
+                            "consentReIdentificationTermination": {
                                 "type": "boolean",
                                 "description": "The patient's termination of the Modellvorhaben consent to re-identify the case and to re-contact the patient in case of new findings"
-                                } 
+                            }
                         }
                     },
                     "researchConsentDate": {
@@ -137,26 +158,26 @@
                     },
                     "researchConsentVersion": {
                         "type": "string",
-                        "description": "Version of the research consent"                  
+                        "description": "Version of the research consent"
                     },
                     "researchConsentScope": {
                         "type": "object",
-                        "description": "Scope of the research consent given by the patient; shall be given in .json format",
+                        "description": "Scope of the research consent given by the patient; shall be given in JSON format.",
                         "properties": {}
                     },
-                    "researchConsentRevocationlDate": {
+                    "researchConsentRevocationDate": {
                         "type": "string",
                         "description": "Date of the revocation of the research consent; Date in ISO 8601 format YYYY-MM-DD",
                         "format": "date"
                     },
                     "researchConsentRevocationScope": {
                         "type": "object",
-                        "description": "Scope of the revocation of the research consent given by the patient; shall be given in .json format",
+                        "description": "Scope of the revocation of the research consent given by the patient; shall be given in JSON format",
                         "properties": {}
                     },
                     "labData": {
                         "type": "array",
-                        "description": "Lab data related to the donor",
+                        "description": "Lab data related to the donor.",
                         "items": {
                             "type": "object",
                             "required": [
@@ -164,19 +185,20 @@
                                 "tissueOntology",
                                 "tissueTypeId",
                                 "tissueTypeName",
+                                "sampleDate",
                                 "sampleConservation",
                                 "sequenceType",
                                 "sequenceSubtype",
                                 "fragmentationMethod",
                                 "libraryType",
-                                "libraryPrepkit",
-                                "libraryPrepkitManufacturer",
+                                "libraryPrepKit",
+                                "libraryPrepKitManufacturer",
                                 "sequencerModel",
                                 "sequencerManufacturer",
                                 "kitName",
                                 "kitManufacturer",
                                 "enrichmentKitManufacturer",
-                                "enrichmentKitdescription",
+                                "enrichmentKitDescription",
                                 "barcode",
                                 "sequencingLayout",
                                 "sequenceData"
@@ -188,29 +210,34 @@
                                 },
                                 "tissueOntology": {
                                     "type": "object",
-                                    "required": ["name", "version"], 
+                                    "required": ["name", "version"],
                                     "properties": {
                                         "name": {
-                                        "type": "string",
-                                        "description": "Name of the tissue ontology"
+                                            "type": "string",
+                                            "description": "Name of the tissue ontology"
                                         },
                                         "version": {
-                                        "type": "string",
-                                        "description": "Version of the tissue ontology"
+                                            "type": "string",
+                                            "description": "Version of the tissue ontology"
                                         }
                                     }
                                 },
                                 "tissueTypeId": {
                                     "type": "string",
-                                    "description": "Tissue ID according to the Ontology in use"
+                                    "description": "Tissue ID according to the ontology in use."
                                 },
                                 "tissueTypeName": {
                                     "type": "string",
-                                    "description": "Tissue name according to the Ontology in use"
+                                    "description": "Tissue name according to the ontology in use."
+                                },
+                                "sampleDate": {
+                                    "type": "string",
+                                    "description": "Date of sample in ISO 8601 format YYYY-MM-DD",
+                                    "format": "date"
                                 },
                                 "sampleConservation": {
                                     "type": "string",
-                                    "description": "Sample Conservation",
+                                    "description": "Sample conservation",
                                     "enum": ["fresh-tissue", "cryo-frozen", "ffpe", "other", "unknown"]
                                 },
                                 "sequenceType": {
@@ -233,27 +260,17 @@
                                     "description": "Library type",
                                     "enum": ["panel", "wes", "wgs", "wgs_lr", "wxs", "other", "unknown"]
                                 },
-                                "libraryPrepkit": {
-                                    "type": "object",
-                                    "required": ["name", "version"], 
-                                    "properties": {
-                                        "name": {
-                                        "type": "string",
-                                        "description": "Name of the library prepkit"
-                                        },
-                                        "version": {
-                                        "type": "string",
-                                        "description": "Version of the library prepkit"
-                                        }
-                                    } 
+                                "libraryPrepKit": {
+                                    "type": "string",
+                                    "description": "Name/version of the library prepkit"
                                 },
-                                "libraryPrepkitManufacturer": {
+                                "libraryPrepKitManufacturer": {
                                     "type": "string",
                                     "description": "Library prep kit manufacturer"
                                 },
                                 "sequencerModel": {
                                     "type": "string",
-                                    "description": "Name/version of the sequencer model"                               
+                                    "description": "Name/version of the sequencer model"
                                 },
                                 "sequencerManufacturer": {
                                     "type": "string",
@@ -261,7 +278,7 @@
                                 },
                                 "kitName": {
                                     "type": "string",
-                                    "description": "Name/version of the sequencing kit"                        
+                                    "description": "Name/version of the sequencing kit"
                                 },
                                 "kitManufacturer": {
                                     "type": "string",
@@ -272,9 +289,9 @@
                                     "description": "Manufacturer of the enrichment kit",
                                     "enum": ["Illumina", "Agilent", "Twist", "NEB", "other", "unknown"]
                                 },
-                                "enrichmentKitdescription": {
+                                "enrichmentKitDescription": {
                                     "type": "string",
-                                    "description": "Name/version of the enrichment kit"                                 
+                                    "description": "Name/version of the enrichment kit"
                                 },
                                 "barcode": {
                                     "type": "string",
@@ -282,27 +299,29 @@
                                 },
                                 "sequencingLayout": {
                                     "type": "string",
-                                    "description": "End type of sequencing",
+                                    "description": "The sequencing layout, aka the end type of sequencing.",
                                     "enum": ["single-end", "paired-end", "reverse", "other"]
                                 },
                                 "tumorCellCount": {
                                     "type": "number",
-                                    "description": "Tumor cell count in %"
+                                    "description": "Tumor cell count in %",
+                                    "minimum": 0,
+                                    "maximum": 100
                                 },
-                                "tumorCellCountmethod": {
+                                "tumorCellCountMethod": {
                                     "type": "string",
-                                    "description": "method used to determine cell count",
+                                    "description": "Method used to determine cell count.",
                                     "enum": ["Pathology", "Bioinformatics", "other", "unknown"]
                                 },
                                 "sequenceData": {
                                     "type": "array",
-                                    "description": "Sequence data generated from the wet lab experiment",
+                                    "description": "Sequence data generated from the wet lab experiment.",
                                     "items": {
                                         "type": "object",
                                         "required": [
                                             "bioinformaticsPipelineName",
-                                            "referenceGenome",
                                             "bioinformaticsPipelineVersion",
+                                            "referenceGenome",
                                             "percentBasesQ30",
                                             "meanDepthOfCoverage",
                                             "minCoverage",
@@ -317,13 +336,13 @@
                                                 "type": "string",
                                                 "description": "Name of the bioinformatics pipeline used"
                                             },
-                                            "referenceGenome": {
-                                                "type": "string",
-                                                "description": "Reference genome used"
-                                            },
                                             "bioinformaticsPipelineVersion": {
                                                 "type": "string",
                                                 "description": "Version or commit hash of the bioinformatics pipeline"
+                                            },
+                                            "referenceGenome": {
+                                                "type": "string",
+                                                "description": "Reference genome used"
                                             },
                                             "percentBasesQ30": {
                                                 "type": "number",
@@ -349,7 +368,7 @@
                                             },
                                             "readLength": {
                                                 "type": "integer",
-                                                "description": "An integer [0-inf]",
+                                                "description": "The read length; in the case of long-read sequencing it is the rounded average read length.",
                                                 "minimum": 0
                                             },
                                             "nonCodingVariants": {
@@ -372,11 +391,11 @@
                                                             "description": "Version of the caller used"
                                                         }
                                                     }
-                                                }                                                 
+                                                }
                                             },
                                             "files": {
                                                 "type": "array",
-                                                "description": "List of files generated",
+                                                "description": "List of files generated and required in this analysis.",
                                                 "items": {
                                                     "type": "object",
                                                     "required": ["filePath", "fileType", "fileChecksum", "fileSizeInBytes"],
@@ -387,14 +406,14 @@
                                                         },
                                                         "fileType": {
                                                             "type": "string",
-                                                            "description": "Type of the file; if BED file is submitted, only 1 file is allowed",
+                                                            "description": "Type of the file; if BED file is submitted, only 1 file is allowed.",
                                                             "enum": ["bam", "vcf", "bed", "fastq"]
                                                         },
                                                         "checksumType": {
                                                             "type": "string",
                                                             "description": "Type of checksum algorithm used",
-                                                            "enum": ["sha256"],  
-                                                            "default": "sha256" 
+                                                            "enum": ["sha256"],
+                                                            "default": "sha256"
                                                         },
                                                         "fileChecksum": {
                                                             "type": "string",
@@ -406,16 +425,16 @@
                                                             "description": "Size of the file in bytes",
                                                             "minimum": 0
                                                         }
-                                                    }                                                    
+                                                    }
                                                 }
                                             }
-                                        }                                        
+                                        }
                                     }
                                 }
-                            }                            
+                            }
                         }
                     }
-                }            
+                }
             }
         }
     }

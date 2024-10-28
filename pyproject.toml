@@ -71,6 +71,7 @@ exclude = [
     "__pycache__",
     "build",
     "dist",
+    "out"
 ]
 line-length = 88
 src = [
@@ -133,7 +134,7 @@ max-complexity = 10
 "__init__.py" = [
     "D",
 ]
-"src/grz_cli/models/*.py" = [
+"src/grz_cli/models/**.py" = [
     "D100",
     "D101",
     "D102",

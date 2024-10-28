@@ -1,24 +1,27 @@
 {
-  "Submission": {
+  "submission": {
     "submissionDate": "2024-07-15",
     "submissionType": "initial",
     "submitterId": "260914050",
-    "indexCaseId": "aaaaaaaa00000000aaaaaaaa00000000",
-    "GenomicDataCenterId": "GRZ000001",
-    "labName": "Institute für Humangenetik am Klinikum rechts der Isar"
+    "labName": "Institute für Humangenetik am Klinikum rechts der Isar",
+    "tanG": "aaaaaaaa00000000aaaaaaaa00000000",
+    "genomicDataCenterId": "GRZK00007",
+    "clinicalDataNodeId": "KDKK00007",
+    "genomicStudyType": "single",
+    "genomicStudySubtype": "tumor-only"
   },
-  "Donors": [
+  "donors": [
     {
-      "caseID": "aaaaaaaa00000000aaaaaaaa00000000",
-      "gender": "female",
-      "relation": "index patient",
-      "MVConsentDate": "2024-07-05",
-      "MVConsentPresentedDate": "2024-07-05",
-      "MVConsentVersion": "1.7.1b",
-      "MVConsentScope": {
-        "ConsentMVSequencing": true,
-        "ConsentCaseIdentification": true,
-        "ConsentReIdentification": true
+      "caseId": "aaaaaaaa00000000aaaaaaaa00000000",
+      "sex": "female",
+      "relation": "self",
+      "mvConsentDate": "2024-07-05",
+      "mvConsentPresentedDate": "2024-07-05",
+      "mvConsentVersion": "1.7.1b",
+      "mvConsentScope": {
+        "consentMvSequencing": true,
+        "consentCaseIdentification": true,
+        "consentReIdentification": true
       },
       "labData": [
         {
@@ -34,17 +37,14 @@
           "sequenceSubtype": "germline",
           "fragmentationMethod": "sonication",
           "libraryType": "wes",
-          "libraryPrepkit": {
-            "name": "Agilent SureSelect Human All Exon",
-            "version": "v6"
-          },
-          "libraryPrepkitManufacturer": "Agilent",
+          "libraryPrepKit": "Agilent SureSelect Human All Exon v6",
+          "libraryPrepKitManufacturer": "Agilent",
           "sequencerModel": "Illumina HiSeq X",
           "sequencerManufacturer": "Illumina",
           "kitName": "Illumina NovaSeq S4 flow cell",
           "kitManufacturer": "Illumina",
           "enrichmentKitManufacturer": "Illumina",
-          "enrichmentKitdescription": "TruSeq RNA Access Library Prep Kit v2.0",
+          "enrichmentKitDescription": "TruSeq RNA Access Library Prep Kit v2.0",
           "barcode": "ATCACG",
           "sequencingLayout": "paired-end",
           "sequenceData": [
@@ -93,7 +93,8 @@
                 }
               ]
             }
-          ]
+          ],
+          "sampleDate": "1970-01-01"
         },
         {
           "labDataName": "Blut DNA Tumor",
@@ -108,17 +109,14 @@
           "sequenceSubtype": "somatic",
           "fragmentationMethod": "sonication",
           "libraryType": "wes",
-          "libraryPrepkit": {
-            "name": "Agilent SureSelect Human All Exon",
-            "version": "v6"
-          },
-          "libraryPrepkitManufacturer": "Agilent",
+          "libraryPrepKit": "Agilent SureSelect Human All Exon v6",
+          "libraryPrepKitManufacturer": "Agilent",
           "sequencerModel": "Illumina HiSeq X",
           "sequencerManufacturer": "Illumina",
           "kitName": "Illumina NovaSeq S4 flow cell",
           "kitManufacturer": "Illumina",
           "enrichmentKitManufacturer": "Illumina",
-          "enrichmentKitdescription": "TruSeq RNA Access Library Prep Kit v2.0",
+          "enrichmentKitDescription": "TruSeq RNA Access Library Prep Kit v2.0",
           "barcode": "GGTACTA",
           "sequencingLayout": "paired-end",
           "sequenceData": [
@@ -167,21 +165,22 @@
                 }
               ]
             }
-          ]
+          ],
+          "sampleDate": "1970-01-01"
         }
       ]
     },
     {
-      "caseID": "aaaaaaaa00000000aaaaaaaa00000002",
-      "gender": "male",
+      "caseId": "aaaaaaaa00000000aaaaaaaa00000002",
+      "sex": "male",
       "relation": "father",
-      "MVConsentDate": "2024-07-15",
-      "MVConsentPresentedDate": "2024-07-15",
-      "MVConsentVersion": "1.7.1b",
-      "MVConsentScope": {
-        "ConsentMVSequencing": true,
-        "ConsentCaseIdentification": true,
-        "ConsentReIdentification": true
+      "mvConsentDate": "2024-07-15",
+      "mvConsentPresentedDate": "2024-07-15",
+      "mvConsentVersion": "1.7.1b",
+      "mvConsentScope": {
+        "consentMvSequencing": true,
+        "consentCaseIdentification": true,
+        "consentReIdentification": true
       },
       "labData": [
         {
@@ -197,17 +196,14 @@
           "sequenceSubtype": "germline",
           "fragmentationMethod": "sonication",
           "libraryType": "wes",
-          "libraryPrepkit": {
-            "name": "Agilent SureSelect Human All Exon",
-            "version": "v6"
-          },
-          "libraryPrepkitManufacturer": "Agilent",
+          "libraryPrepKit": "Agilent SureSelect Human All Exon v6",
+          "libraryPrepKitManufacturer": "Agilent",
           "sequencerModel": "Illumina HiSeq X",
           "sequencerManufacturer": "Illumina",
           "kitName": "Illumina NovaSeq S4 flow cell",
           "kitManufacturer": "Illumina",
           "enrichmentKitManufacturer": "Illumina",
-          "enrichmentKitdescription": "TruSeq RNA Access Library Prep Kit v2.0",
+          "enrichmentKitDescription": "TruSeq RNA Access Library Prep Kit v2.0",
           "barcode": "TTGACA",
           "sequencingLayout": "paired-end",
           "sequenceData": [
@@ -256,7 +252,8 @@
                 }
               ]
             }
-          ]
+          ],
+          "sampleDate": "1970-01-01"
         }
       ]
     }

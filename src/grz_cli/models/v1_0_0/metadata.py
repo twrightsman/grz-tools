@@ -30,7 +30,7 @@ from pydantic import (
 )
 from pydantic.alias_generators import to_camel
 
-from ..file_operations import calculate_sha256
+from grz_cli.file_operations import calculate_sha256  # type: ignore
 
 
 class StrictBaseModel(BaseModel):
@@ -44,13 +44,33 @@ class StrictBaseModel(BaseModel):
 
 class SubmissionType(StrEnum):
     """
-    "initial" for first submission, "addition" for additional submission, "correction" for correction
+    The options are: 'initial' for first submission, 'followup' is for followup submissions, 'addition' for additional submission, 'correction' for correction
     """
 
     initial = "initial"
+    followup = "followup"
     addition = "addition"
     correction = "correction"
-    other = "other"
+
+
+class GenomicStudyType(StrEnum):
+    """
+    whether additional persons are tested as well
+    """
+
+    single = "single"
+    duo = "duo"
+    trio = "trio"
+
+
+class GenomicStudySubtype(StrEnum):
+    """
+    whether tumor and/or germ-line are tested
+    """
+
+    tumor_only = "tumor-only"
+    tumor_germline = "tumor+germline"
+    germline_only = "germline-only"
 
 
 class Submission(StrictBaseModel):
@@ -61,35 +81,58 @@ class Submission(StrictBaseModel):
 
     submission_type: SubmissionType
     """
-    "initial" for first submission, "addition" for additional submission, "correction" for correction
+    The options are: 'initial' for first submission, 'followup' is for followup submissions, 'addition' for additional submission, 'correction' for correction
     """
 
-    index_case_id: Annotated[str, StringConstraints(pattern=r"^[a-fA-F0-9]{32}$")]
+    tan_g: Annotated[str, StringConstraints(pattern=r"^[a-fA-F0-9]{32}$")]
     """
-    The VNg provided by RKI --> a unique 32-byte hex ID for the index case.
+    The VNg of the genomic data of the patient that will be reimbursed --> a unique 32-byte hex ID.
+    """
+
+    local_case_id: str | None = None
+    """
+    A local case identifier for synchronizing locally
     """
 
     submitter_id: Annotated[str, StringConstraints(pattern=r"^[0-9]{9}$")]
     """
-    Institutional ID of the submitter according to §293 SGB V
+    Institutional ID of the submitter according to §293 SGB V.
     """
 
     genomic_data_center_id: Annotated[
-        str, StringConstraints(pattern=r"^GRZ[0-9]{6}$")
-    ] = Field(..., alias="GenomicDataCenterId")
+        str,
+        StringConstraints(pattern=r"^(GRZ|KDK)[A-Z0-9]{3}[0-9]{3}$"),
+    ]
     """
-    ID of the genomic data center node in format GRZXXXnnn
+    ID of the genomic data center in the format GRZXXXnnn.
+    """
+
+    clinical_data_node_id: Annotated[
+        str, StringConstraints(pattern=r"^(GRZ|KDK)[A-Z0-9]{3}[0-9]{3}$")
+    ]
+    """
+    ID of the genomic data center in the format KDKXXXnnn.
+    """
+
+    genomic_study_type: GenomicStudyType
+    """
+    whether additional persons are tested as well
+    """
+
+    genomic_study_subtype: GenomicStudySubtype
+    """
+    whether tumor and/or germ-line are tested
     """
 
     lab_name: str
     """
-    Name of the sequencing lab
+    Name of the sequencing lab.
     """
 
 
-class Gender(StrEnum):
+class Sex(StrEnum):
     """
-    Gender of the donor
+    Gender of the donor.
     """
 
     male = "male"
@@ -98,49 +141,56 @@ class Gender(StrEnum):
     unknown = "unknown"
 
 
+class Relation(StrEnum):
+    """
+    Relationship of the donor in respect to the index patient, e.g. 'index', 'brother', 'mother', etc.
+    """
+
+    mother = "mother"
+    father = "father"
+    brother = "brother"
+    sister = "sister"
+    child = "child"
+    self = "self"
+
+
 class MvConsentScope(StrictBaseModel):
     """
-    the scope of the Modellvorhaben scope given by the patient
+    The scope of the Modellvorhaben consent given by the donor.
     """
 
-    consent_mv_sequencing: bool = Field(..., alias="ConsentMVSequencing")
+    consent_mv_sequencing: bool
     """
-    The patient's consent to participate in the Modellvorhaben and sequencing
-    """
-
-    consent_case_identification: bool = Field(..., alias="ConsentCaseIdentification")
-    """
-    The patient's consent to identify the case
+    The donor's consent to participate in the Modellvorhaben and sequencing.
     """
 
-    consent_re_identification: bool = Field(..., alias="ConsentReIdentification")
+    consent_case_identification: bool
     """
-    The patient's consent to re-identify the case and to re-contact the patient in case of new findings
+    The donor's consent to identify the case.
+    """
+
+    consent_re_identification: bool
+    """
+    The donor's consent to be re-identified and to be re-contacted in case of new findings.
     """
 
 
 class MvConsentTerminationScope(StrictBaseModel):
     """
-    The scope of the termination of the Modellvorhaben consent
+    The scope of the termination of the Modellvorhaben consent.
     """
 
-    consent_mv_sequencing_termination: bool | None = Field(
-        None, alias="ConsentMVSequencingTermination"
-    )
+    consent_mv_sequencing_termination: bool | None = None
     """
     The patient's termination of the Modellvorhaben consent to participate in the Modellvorhaben and sequencing
     """
 
-    consent_case_identification_termination: bool | None = Field(
-        None, alias="ConsentCaseIdentificationTermination"
-    )
+    consent_case_identification_termination: bool | None = None
     """
     The patient's termination of the Modellvorhaben consent to identify the case
     """
 
-    consent_re_identification_termination: bool | None = Field(
-        None, alias="ConsentReIdentificationTermination"
-    )
+    consent_re_identification_termination: bool | None = None
     """
     The patient's termination of the Modellvorhaben consent to re-identify the case and to re-contact the patient in case of new findings
     """
@@ -160,7 +210,7 @@ class TissueOntology(StrictBaseModel):
 
 class SampleConservation(StrEnum):
     """
-    Sample Conservation
+    Sample conservation
     """
 
     fresh_tissue = "fresh-tissue"
@@ -216,17 +266,6 @@ class LibraryType(StrEnum):
     unknown = "unknown"
 
 
-class LibraryPrepkit(StrictBaseModel):
-    name: str
-    """
-    Name of the library prepkit
-    """
-    version: str
-    """
-    Version of the library prepkit
-    """
-
-
 class EnrichmentKitManufacturer(StrEnum):
     """
     Manufacturer of the enrichment kit
@@ -242,7 +281,7 @@ class EnrichmentKitManufacturer(StrEnum):
 
 class SequencingLayout(StrEnum):
     """
-    End type of sequencing
+    The sequencing layout, aka the end type of sequencing.
     """
 
     single_end = "single-end"
@@ -251,9 +290,9 @@ class SequencingLayout(StrEnum):
     other = "other"
 
 
-class TumorCellCountmethod(StrEnum):
+class TumorCellCountMethod(StrEnum):
     """
-    method used to determine cell count
+    Method used to determine cell count.
     """
 
     pathology = "Pathology"
@@ -267,6 +306,7 @@ class CallerUsedItem(StrictBaseModel):
     """
     Name of the caller used
     """
+
     version: str
     """
     Version of the caller used
@@ -275,7 +315,7 @@ class CallerUsedItem(StrictBaseModel):
 
 class FileType(StrEnum):
     """
-    Type of the file; if BED file is submitted, only 1 file is allowed
+    Type of the file; if BED file is submitted, only 1 file is allowed.
     """
 
     bam = "bam"
@@ -300,7 +340,7 @@ class File(StrictBaseModel):
 
     file_type: FileType
     """
-    Type of the file; if BED file is submitted, only 1 file is allowed
+    Type of the file; if BED file is submitted, only 1 file is allowed.
     """
 
     checksum_type: ChecksumType | None = ChecksumType.sha256
@@ -368,14 +408,14 @@ class SequenceDatum(StrictBaseModel):
     Name of the bioinformatics pipeline used
     """
 
-    reference_genome: str
-    """
-    Reference genome used
-    """
-
     bioinformatics_pipeline_version: str
     """
     Version or commit hash of the bioinformatics pipeline
+    """
+
+    reference_genome: str
+    """
+    Reference genome used
     """
 
     percent_bases_q30: Annotated[float, Field(strict=True, ge=0.0, le=100.0)]
@@ -402,7 +442,7 @@ class SequenceDatum(StrictBaseModel):
 
     read_length: Annotated[int, Field(strict=True, ge=0)]
     """
-    An integer [0-inf]
+    The read length; in the case of long-read sequencing it is the rounded average read length.
     """
 
     non_coding_variants: bool
@@ -417,7 +457,7 @@ class SequenceDatum(StrictBaseModel):
 
     files: list[File]
     """
-    List of files generated
+    List of files generated and required in this analysis.
     """
 
 
@@ -431,17 +471,22 @@ class LabDatum(StrictBaseModel):
 
     tissue_type_id: str
     """
-    Tissue ID according to the Ontology in use
+    Tissue ID according to the ontology in use.
     """
 
     tissue_type_name: str
     """
-    Tissue name according to the Ontology in use
+    Tissue name according to the ontology in use.
+    """
+
+    sample_date: date
+    """
+    Date of sample in ISO 8601 format YYYY-MM-DD
     """
 
     sample_conservation: SampleConservation
     """
-    Sample Conservation
+    Sample conservation
     """
 
     sequence_type: SequenceType
@@ -464,9 +509,12 @@ class LabDatum(StrictBaseModel):
     Library type
     """
 
-    library_prepkit: LibraryPrepkit
+    library_prep_kit: str
+    """
+    Name/version of the library prepkit
+    """
 
-    library_prepkit_manufacturer: str
+    library_prep_kit_manufacturer: str
     """
     Library prep kit manufacturer
     """
@@ -496,7 +544,7 @@ class LabDatum(StrictBaseModel):
     Manufacturer of the enrichment kit
     """
 
-    enrichment_kitdescription: str
+    enrichment_kit_description: str
     """
     Name/version of the enrichment kit
     """
@@ -508,73 +556,71 @@ class LabDatum(StrictBaseModel):
 
     sequencing_layout: SequencingLayout
     """
-    End type of sequencing
+    The sequencing layout, aka the end type of sequencing.
     """
 
-    tumor_cell_count: float | None = None
+    tumor_cell_count: Annotated[
+        float | None, Field(alias="tumorCellCount", ge=0.0, le=100.0)
+    ] = None
     """
     Tumor cell count in %
     """
 
-    tumor_cell_countmethod: TumorCellCountmethod | None = None
+    tumor_cell_count_method: TumorCellCountMethod | None = None
     """
-    method used to determine cell count
+    Method used to determine cell count.
     """
 
     sequence_data: list[SequenceDatum]
     """
-    Sequence data generated from the wet lab experiment
+    Sequence data generated from the wet lab experiment.
     """
 
 
 class Donor(StrictBaseModel):
-    case_id: str = Field(..., alias="caseID")
+    case_id: Annotated[str, StringConstraints(pattern=r"^[a-fA-F0-9]{32}$")]
     """
-    The VNg provided by RKI --> a unique 32-byte hex ID for the given donor.
-    """
-
-    gender: Gender
-    """
-    Gender of the donor
+    The VNg of the genomic data of the donor --> a unique 32-byte hex ID.
     """
 
-    relation: str
+    sex: Sex
     """
-    Relation of the patient to the pedigree e.g. 'index', 'brother', etc.
+    Gender of the donor.
     """
 
-    mv_consent_date: date = Field(..., alias="MVConsentDate")
+    relation: Relation
+    """
+    Relationship of the donor in respect to the index patient, e.g. 'index', 'brother', 'mother', etc.
+    """
+
+    mv_consent_date: date
     """
     Date of the signature of the Modellvorhaben consent; Date in ISO 8601 format YYYY-MM-DD
     """
 
-    mv_consent_presented_date: date | None = Field(None, alias="MVConsentPresentedDate")
+    mv_consent_presented_date: date | None = None
     """
     Date of the presentation of the Modellvorhaben consent; Date in ISO 8601 format YYYY-MM-DD
     """
 
-    mv_consent_version: str = Field(..., alias="MVConsentVersion")
+    mv_consent_version: str
     """
     Version of the research consent
     """
 
-    mv_consent_scope: MvConsentScope = Field(..., alias="MVConsentScope")
+    mv_consent_scope: MvConsentScope
     """
-    the scope of the Modellvorhaben scope given by the patient
+    The scope of the Modellvorhaben consent given by the donor.
     """
 
-    mv_consent_termination_date: date | None = Field(
-        None, alias="MVConsentTerminationDate"
-    )
+    mv_consent_termination_date: date | None = None
     """
     Date of the termination of the Modellvorhaben consent; Date in ISO 8601 format YYYY-MM-DD
     """
 
-    mv_consent_termination_scope: MvConsentTerminationScope | None = Field(
-        None, alias="MVConsentTerminationScope"
-    )
+    mv_consent_termination_scope: MvConsentTerminationScope | None = None
     """
-    The scope of the termination of the Modellvorhaben consent
+    The scope of the termination of the Modellvorhaben consent.
     """
 
     research_consent_date: date | None = None
@@ -594,22 +640,22 @@ class Donor(StrictBaseModel):
 
     research_consent_scope: dict[str, Any] | None = None
     """
-    Scope of the research consent given by the patient; shall be given in .json format
+    Scope of the research consent given by the patient; shall be given in JSON format.
     """
 
-    research_consent_revocationl_date: date | None = None
+    research_consent_revocation_date: date | None = None
     """
     Date of the revocation of the research consent; Date in ISO 8601 format YYYY-MM-DD
     """
 
     research_consent_revocation_scope: dict[str, Any] | None = None
     """
-    Scope of the revocation of the research consent given by the patient; shall be given in .json format
+    Scope of the revocation of the research consent given by the patient; shall be given in JSON format
     """
 
     lab_data: list[LabDatum]
     """
-    Lab data related to the donor
+    Lab data related to the donor.
     """
 
 
@@ -618,9 +664,9 @@ class GrzSubmissionMetadata(StrictBaseModel):
     General metadata schema for submissions to the GRZ
     """
 
-    submission: Submission = Field(..., alias="Submission")
+    submission: Submission
 
-    donors: list[Donor] = Field(..., alias="Donors")
+    donors: list[Donor]
     """
-    List of donors
+    List of donors including the index patient.
     """
