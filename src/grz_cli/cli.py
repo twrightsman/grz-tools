@@ -21,7 +21,9 @@ log = logging.getLogger(PACKAGE_ROOT + ".cli")
 
 
 class OrderedGroup(click.Group):
-    """A click Group that keeps track of the order in which commands are added."""
+    """
+    A click Group that keeps track of the order in which commands are added.
+    """
 
     def list_commands(self, ctx):
         """Return the list of commands in the order they were added."""
@@ -127,7 +129,8 @@ def cli(log_file: str | None = None, log_level: str = "INFO"):
 )
 def validate(submission_dir: str, metadata_dir: str, files_dir: str, working_dir: str):
     """
-    Validates the sha256 checksum of the sequence data files. This command must be executed before the encryption and upload can start.
+    Validates the sha256 checksum of the sequence data files. This command must be executed
+    before the encryption and upload can start.
     """
     log.info("Starting validation...")
 
@@ -384,9 +387,11 @@ def decrypt(  # noqa: PLR0913
 
     worker_inst = Worker(
         working_dir=working_dir_,
-        files_dir=working_dir_ / "files"
-        if decrypted_files_dir is None
-        else decrypted_files_dir,
+        files_dir=(
+            working_dir_ / "files"
+            if decrypted_files_dir is None
+            else decrypted_files_dir
+        ),
         metadata_dir=(
             encrypted_submission_dir_ / "metadata"
             if metadata_dir is None
@@ -513,9 +518,102 @@ def upload(
     log.info("Upload finished!")
 
 
+@cli.command()
+@click.argument("submission_id", type=str)
+@click.option(
+    "-s",
+    "--encrypted-submission-dir",
+    metavar="STRING",
+    type=click.Path(
+        exists=True, file_okay=False, dir_okay=True, readable=True, resolve_path=True
+    ),
+    required=False,
+    help="Path to the encrypted submission directory containing both 'metadata/' and 'encrypted_files/' directories",
+)
+@click.option(
+    "-m",
+    "--metadata-dir",
+    metavar="STRING",
+    type=click.Path(
+        exists=False,
+        file_okay=False,
+        dir_okay=True,
+        readable=True,
+        writable=True,
+        resolve_path=True,
+    ),
+    required=False,
+    default=None,
+    help="Path to the metadata directory containing the metadata.json file",
+)
+@click.option(
+    "-e",
+    "--encrypted-files-dir",
+    metavar="STRING",
+    type=click.Path(
+        exists=False,
+        file_okay=False,
+        dir_okay=True,
+        readable=True,
+        writable=True,
+        resolve_path=True,
+    ),
+    required=False,
+    default=None,
+    help="Path to the encrypted files linked in the submission",
+)
+@click.option(
+    "-c",
+    "--config-file",
+    metavar="STRING",
+    type=click.Path(
+        exists=True, file_okay=True, dir_okay=False, readable=True, resolve_path=True
+    ),
+    required=True,
+    default="~/.config/grz_upload/config.yaml",
+    help="Path to config file",
+)
+def download(
+    submission_id,
+    encrypted_submission_dir,
+    metadata_dir,
+    encrypted_files_dir,
+    config_file,
+):
+    """
+    Downloads a submission file to s3 using the provided configuration.
+    :param submission_id: Submission id
+    :param encrypted_submission_dir: The path to the encrypted submission directory.
+    :param metadata_dir: The path to the metadata directory.
+    :param encrypted_files_dir: The path to the encrypted files directory.
+    :param config_file: The path to the configuration file.
+    """
+    config = read_config(config_file)
+
+    log.info("Starting download...")
+
+    encrypted_submission_dir_path = Path(encrypted_submission_dir)
+
+    worker_inst = Worker(
+        metadata_dir=(
+            encrypted_submission_dir_path / submission_id / "metadata"
+            if metadata_dir is None
+            else metadata_dir
+        ),
+        encrypted_files_dir=(
+            encrypted_submission_dir_path / submission_id / "files"
+            if encrypted_files_dir is None
+            else encrypted_files_dir
+        ),
+    )
+    worker_inst.download(config)
+
+    log.info("Download finished!")
+
+
 def read_config(config_path: str | PathLike) -> ConfigModel:
     """Reads the configuration file and validates it against the schema."""
-    with open(config_path) as f:
+    with open(config_path, encoding="utf-8") as f:
         config = ConfigModel(**yaml.safe_load(f))
 
     return config

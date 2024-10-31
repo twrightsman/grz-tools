@@ -8,6 +8,7 @@ from collections.abc import Generator
 from os import PathLike
 from pathlib import Path
 
+from .download import S3BotoDownloadWorker
 from .file_operations import Crypt4GH, calculate_sha256
 from .models.config import Backend, ConfigModel
 from .models.v1_0_0.metadata import File as SubmissionFileMetadata
@@ -462,7 +463,7 @@ class Worker:
 
     def __init__(
         self,
-        working_dir: str | PathLike,
+        working_dir: str | PathLike | None = None,
         metadata_dir: str | PathLike | None = None,
         files_dir: str | PathLike | None = None,
         encrypted_files_dir: str | PathLike | None = None,
@@ -477,7 +478,8 @@ class Worker:
         :param encrypted_files_dir: Path to the encrypted files directory
         :param log_dir: Path to the log directory
         """
-        self.working_dir = Path(working_dir)
+        self.working_dir = Path(working_dir) if working_dir is not None else Path.cwd()
+
         self.__log.debug("Working directory: %s", self.working_dir)
 
         # metadata dir
@@ -629,7 +631,6 @@ class Worker:
         """
         Upload an encrypted submission
 
-        :return: EncryptedSubmission instance
         """
         if config.s3_options.backend == Backend.s3cmd:
             raise NotImplementedError()
@@ -642,28 +643,26 @@ class Worker:
 
         upload_worker.upload(encrypted_submission)
 
-    # def show_summary(self, stage: str):
-    #     """
-    #     Display the summary of file processing for the specified stage.
-    #     :param stage: The current processing stage (e.g., 'checksum', 'encryption').
-    #     """
-    #     # TODO: update this method
-    #     file_stats = self.submission.get_stats()
-    #
-    #     checked_before, checked_now, failed, finished = 0, 0, 0, 0
-    #
-    #     if stage == "validate":
-    #         info_text = "SHA256 checksum validation"
-    #
-    #     self.__log.info(info_text + " - overview:")
-    #     self.__log.info(f"Total files: {file_stats['total']}")
-    #     self.__log.info(f"Added in previous run: {file_stats['old']}")
-    #     self.__log.info(f"Added in current run: {file_stats['new']}")
-    #     self.__log.error(f"Files not found: {file_stats['file_not_found']}") if file_stats['file_not_found'] != 0 else self.__log.info(f"Files not found: {file_stats['file_not_found']}")
-    #     self.__log.error(f"Failed files: {file_stats['failed']}") if file_stats['failed'] != 0 else self.__log.info(f"Failed files: {file_stats['failed']}")
-    #     self.__log.info(f"Finished files: {file_stats['processed']}")
-    #
-    #     if {file_stats['total']} == {file_stats['processed']}:
-    #         self.__log.info(f"{info_text} - Process Complete")
-    #     else:
-    #         self.__log.warning(f"{info_text} - Process Incomplete. Address the errors before proceeding.")
+    def download(self, config: ConfigModel):
+        """
+        Download an encrypted submission
+
+        """
+        if config.s3_options.backend == Backend.s3cmd:
+            raise NotImplementedError()
+        else:
+            download_worker = S3BotoDownloadWorker(
+                config, status_file_path=self.progress_file_upload
+            )
+
+        submission_id = self.metadata_dir.parent.name
+        submission_dir = download_worker.prepare_download(self.metadata_dir)
+
+        log.info("Prepared submission directory: %s", submission_dir)
+
+        download_worker.download(
+            submission_id,
+            self.metadata_dir,
+            self.encrypted_files_dir,
+            metadata_file_name="metadata.json",
+        )
