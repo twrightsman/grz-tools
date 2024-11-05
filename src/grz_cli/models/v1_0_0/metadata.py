@@ -7,7 +7,7 @@
 ## --input src/grz_cli/resources/grz-schema.json \
 ## --use-schema-description --use-field-description --snake-case-field --use-standard-collections --use-union-operator \
 ## --field-constraints --use-annotated --enable-version-header --reuse-model --use-subclass-enum --union-mode smart \
-## --class-name 'GrzSubmissionMetadata' --target-python-version 3.12
+## --class-name 'GrzSubmissionMetadata' --use-double-quotes --target-python-version 3.12
 ### Custom modifications:
 ### - disallow extra fields (no additional properties allowed)
 ### - validate_assignment (i.e. when setting properties, re-trigger validations)
@@ -332,6 +332,15 @@ class ChecksumType(StrEnum):
     sha256 = "sha256"
 
 
+class ReadOrder(StrEnum):
+    """
+    Indicates the read order for paired-end reads.
+    """
+
+    r1 = "R1"
+    r2 = "R2"
+
+
 class File(StrictBaseModel):
     file_path: str
     """
@@ -356,6 +365,11 @@ class File(StrictBaseModel):
     file_size_in_bytes: Annotated[int, Field(strict=True, ge=0)]
     """
     Size of the file in bytes
+    """
+
+    read_order: ReadOrder | None = None
+    """
+    Indicates the read order for paired-end reads.
     """
 
     def validate_data(self, local_file_path: Path) -> Generator[str]:
@@ -585,7 +599,7 @@ class Donor(StrictBaseModel):
 
     sex: Sex
     """
-    Gender of the donor.
+    Sex of the donor.
     """
 
     relation: Relation

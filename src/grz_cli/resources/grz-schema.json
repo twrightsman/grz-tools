@@ -82,7 +82,7 @@
                     },
                     "sex": {
                         "type": "string",
-                        "description": "Gender of the donor.",
+                        "description": "Sex of the donor.",
                         "enum": ["male", "female", "other", "unknown"]
                     },
                     "relation": {
@@ -424,6 +424,11 @@
                                                             "type": "number",
                                                             "description": "Size of the file in bytes",
                                                             "minimum": 0
+                                                        },
+                                                        "readOrder": {
+                                                            "type": "string",
+                                                            "enum": ["R1", "R2"],
+                                                            "description": "Indicates the read order for paired-end reads."
                                                         }
                                                     }
                                                 }
