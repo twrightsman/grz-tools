@@ -465,7 +465,7 @@ def decrypt(  # noqa: PLR0913
     ),
     required=False,
     default=None,
-    callback=lambda c, p, v: v if v else c.params["folderpath"],
+    callback=lambda c, p, v: v if v else c.params["encrypted_submission_dir"],
     help="Path to a working directory where intermediate files can be stored",
 )
 @click.option(
