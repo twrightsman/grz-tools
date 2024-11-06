@@ -1,5 +1,5 @@
 ## Path to the crypt4gh public key of the recipient (the associated GRZ).
-grz_public_key_path: 'path/to/public/key'
+grz_public_key_path: 'path/to/public/key.pub'
 
 ## Uncomment the following line if you wish to be able to decrypt the submission.
 # grz_private_key_path: 'path/to/private/key'

@@ -1,6 +1,9 @@
 from enum import StrEnum
+from pathlib import Path
+from typing import Annotated
 
-from pydantic import AnyUrl, BaseModel, ConfigDict, model_validator
+from pydantic import AfterValidator, AnyUrl, BaseModel, ConfigDict, model_validator
+from pydantic.types import PathType
 
 
 class StrictBaseModel(BaseModel):
@@ -102,18 +105,21 @@ class S3Options(StrictBaseModel):
         return self
 
 
+FilePath = Annotated[Path, AfterValidator(lambda v: v.expanduser()), PathType("file")]
+
+
 class ConfigModel(StrictBaseModel):
-    grz_public_key_path: str
+    grz_public_key_path: FilePath
     """
     Path to the crypt4gh public key of the recipient (the associated GRZ).
     """
 
-    grz_private_key_path: str | None = None
+    grz_private_key_path: FilePath | None = None
     """
     Path to the crypt4gh private key of the recipient (optional).
     """
 
-    submitter_private_key_path: str | None = None
+    submitter_private_key_path: FilePath | None = None
     """
     Path to the submitter's private key (optional).
     """
