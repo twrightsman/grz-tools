@@ -16,8 +16,117 @@ from .logging_setup import add_filelogger
 from .models.config import ConfigModel
 from .parser import Worker
 
-# replace __MAIN__ with correct module name
 log = logging.getLogger(PACKAGE_ROOT + ".cli")
+
+# Aliases for path types for click options
+# Naming convention: {DIR,FILE}_{Read,Write}_{Exists,Create}
+DIR_R_E = click.Path(
+    exists=True,
+    file_okay=False,
+    dir_okay=True,
+    readable=True,
+    writable=False,
+    resolve_path=True,
+)
+DIR_RW_E = click.Path(
+    exists=True,
+    file_okay=False,
+    dir_okay=True,
+    readable=True,
+    writable=True,
+    resolve_path=True,
+)
+DIR_RW_C = click.Path(
+    exists=False,
+    file_okay=False,
+    dir_okay=True,
+    readable=True,
+    writable=True,
+    resolve_path=True,
+)
+FILE_R_E = click.Path(
+    exists=True, file_okay=True, dir_okay=False, readable=True, resolve_path=True
+)
+
+submission_dir = click.option(
+    "-s",
+    "--submission-dir",
+    metavar="PATH",
+    type=DIR_R_E,
+    required=True,
+    help="Path to the submission directory containing both 'metadata/' and 'files/' directories",
+)
+
+
+metadata_dir = click.option(
+    "-m",
+    "--metadata-dir",
+    metavar="PATH",
+    type=DIR_RW_C,
+    required=False,
+    default=None,
+    help="Path to the metadata directory containing the metadata.json file",
+)
+
+files_dir = click.option(
+    "-f",
+    "--files-dir",
+    metavar="PATH",
+    type=DIR_RW_C,
+    required=False,
+    default=None,
+    help="Path to the files linked in the submission",
+)
+
+working_dir = click.option(
+    "-w",
+    "--working-dir",
+    metavar="PATH",
+    type=DIR_RW_E,
+    required=False,
+    default=None,
+    callback=lambda c, p, v: v if v else c.params["submission_dir"],
+    help="Path to a working directory where intermediate files can be stored",
+)
+
+config_file = click.option(
+    "-c",
+    "--config-file",
+    metavar="STRING",
+    type=FILE_R_E,
+    required=True,
+    default="~/.config/grz_cli/config.yaml",
+    help="Path to config file",
+)
+
+encrypted_submission_dir = click.option(
+    "-s",
+    "--encrypted-submission-dir",
+    metavar="STRING",
+    type=DIR_R_E,
+    required=False,
+    help="Path to the encrypted submission directory containing both 'metadata/' and 'encrypted_files/' directories",
+)
+
+encrypted_files_dir = click.option(
+    "-o",
+    "--encrypted-files-dir",
+    metavar="PATH",
+    type=DIR_RW_C,
+    required=False,
+    default=None,
+    help="Path to a directory where the encrypted files can be stored",
+)
+
+decrypted_files_dir = click.option(
+    "-o",
+    "--decrypted-files-dir",
+    metavar="STRING",
+    type=DIR_RW_C,
+    required=False,
+    default=None,
+    help="Path to a directory where the decrypted files can be stored",
+)
 
 
 class OrderedGroup(click.Group):
@@ -68,65 +177,10 @@ def cli(log_file: str | None = None, log_level: str = "INFO"):
 
 
 @cli.command()
-@click.option(
-    "-s",
-    "--submission-dir",
-    metavar="STRING",
-    type=click.Path(
-        exists=True, file_okay=False, dir_okay=True, readable=True, resolve_path=True
-    ),
-    required=True,
-    help="Path to the submission directory containing both 'metadata/' and 'files/' directories",
-)
-@click.option(
-    "-m",
-    "--metadata-dir",
-    metavar="STRING",
-    type=click.Path(
-        exists=False,
-        file_okay=False,
-        dir_okay=True,
-        readable=True,
-        writable=True,
-        resolve_path=True,
-    ),
-    required=False,
-    default=None,
-    help="Path to the metadata directory containing the metadata.json file",
-)
-@click.option(
-    "-f",
-    "--files-dir",
-    metavar="STRING",
-    type=click.Path(
-        exists=False,
-        file_okay=False,
-        dir_okay=True,
-        readable=True,
-        writable=True,
-        resolve_path=True,
-    ),
-    required=False,
-    default=None,
-    help="Path to the files linked in the submission",
-)
-@click.option(
-    "-w",
-    "--working-dir",
-    metavar="STRING",
-    type=click.Path(
-        exists=True,
-        file_okay=False,
-        dir_okay=True,
-        readable=True,
-        writable=True,
-        resolve_path=True,
-    ),
-    required=False,
-    default=None,
-    callback=lambda c, p, v: v if v else c.params["submission_dir"],
-    help="Path to a working directory where intermediate files can be stored",
-)
+@submission_dir
+@metadata_dir
+@files_dir
+@working_dir
 def validate(submission_dir: str, metadata_dir: str, files_dir: str, working_dir: str):
     """
     Validates the sha256 checksum of the sequence data files. This command must be executed
@@ -150,92 +204,12 @@ def validate(submission_dir: str, metadata_dir: str, files_dir: str, working_dir
 
 
 @cli.command()
-@click.option(
-    "-s",
-    "--submission-dir",
-    metavar="STRING",
-    type=click.Path(
-        exists=True, file_okay=False, dir_okay=True, readable=True, resolve_path=True
-    ),
-    required=True,
-    help="Path to the submission directory containing both 'metadata/' and 'files/' directories",
-)
-@click.option(
-    "-m",
-    "--metadata-dir",
-    metavar="STRING",
-    type=click.Path(
-        exists=False,
-        file_okay=False,
-        dir_okay=True,
-        readable=True,
-        writable=True,
-        resolve_path=True,
-    ),
-    required=False,
-    default=None,
-    help="Path to the metadata directory containing the metadata.json file",
-)
-@click.option(
-    "-f",
-    "--files-dir",
-    metavar="STRING",
-    type=click.Path(
-        exists=False,
-        file_okay=False,
-        dir_okay=True,
-        readable=True,
-        writable=True,
-        resolve_path=True,
-    ),
-    required=False,
-    default=None,
-    help="Path to the files linked in the submission",
-)
-@click.option(
-    "-w",
-    "--working-dir",
-    metavar="STRING",
-    type=click.Path(
-        exists=True,
-        file_okay=False,
-        dir_okay=True,
-        readable=True,
-        writable=True,
-        resolve_path=True,
-    ),
-    required=False,
-    default=None,
-    callback=lambda c, p, v: v if v else c.params["submission_dir"],
-    help="Path to a working directory where intermediate files can be stored",
-)
-@click.option(
-    "-o",
-    "--encrypted-files-dir",
-    metavar="STRING",
-    type=click.Path(
-        exists=False,
-        file_okay=False,
-        dir_okay=True,
-        readable=True,
-        writable=True,
-        resolve_path=True,
-    ),
-    required=False,
-    default=None,
-    help="Path to a directory where the encrypted files can be stored",
-)
-@click.option(
-    "-c",
-    "--config-file",
-    metavar="STRING",
-    type=click.Path(
-        exists=True, file_okay=True, dir_okay=False, readable=True, resolve_path=True
-    ),
-    required=True,
-    default="~/.config/grz_cli/config.yaml",
-    help="Path to config file",
-)
+@submission_dir
+@metadata_dir
+@files_dir
+@working_dir
+@encrypted_files_dir
+@config_file
 def encrypt(  # noqa: PLR0913
     submission_dir,
     working_dir,
@@ -276,92 +250,12 @@ def encrypt(  # noqa: PLR0913
 
 
 @cli.command()
-@click.option(
-    "-s",
-    "--encrypted-submission-dir",
-    metavar="STRING",
-    type=click.Path(
-        exists=True, file_okay=False, dir_okay=True, readable=True, resolve_path=True
-    ),
-    required=True,
-    help="Path to the encrypted submission directory containing both 'metadata/' and 'encrypted_files/' directories",
-)
-@click.option(
-    "-m",
-    "--metadata-dir",
-    metavar="STRING",
-    type=click.Path(
-        exists=False,
-        file_okay=False,
-        dir_okay=True,
-        readable=True,
-        writable=True,
-        resolve_path=True,
-    ),
-    required=False,
-    default=None,
-    help="Path to the metadata directory containing the metadata.json file",
-)
-@click.option(
-    "-e",
-    "--encrypted-files-dir",
-    metavar="STRING",
-    type=click.Path(
-        exists=False,
-        file_okay=False,
-        dir_okay=True,
-        readable=True,
-        writable=True,
-        resolve_path=True,
-    ),
-    required=False,
-    default=None,
-    help="Path to the encrypted files linked in the submission",
-)
-@click.option(
-    "-w",
-    "--working-dir",
-    metavar="STRING",
-    type=click.Path(
-        exists=True,
-        file_okay=False,
-        dir_okay=True,
-        readable=True,
-        writable=True,
-        resolve_path=True,
-    ),
-    required=False,
-    default=None,
-    callback=lambda c, p, v: v if v else c.params["submission_dir"],
-    help="Path to a working directory where intermediate files can be stored",
-)
-@click.option(
-    "-o",
-    "--decrypted-files-dir",
-    metavar="STRING",
-    type=click.Path(
-        exists=False,
-        file_okay=False,
-        dir_okay=True,
-        readable=True,
-        writable=True,
-        resolve_path=True,
-    ),
-    required=False,
-    default=None,
-    help="Path to a directory where the decrypted files can be stored",
-)
-@click.option(
-    "-c",
-    "--config-file",
-    metavar="STRING",
-    type=click.Path(
-        exists=True, file_okay=True, dir_okay=False, readable=True, resolve_path=True
-    ),
-    required=True,
-    default="~/.config/grz_cli/config.yaml",
-    help="Path to config file",
-)
+@encrypted_submission_dir
+@metadata_dir
+@encrypted_files_dir
+@working_dir
+@decrypted_files_dir
+@config_file
 def decrypt(  # noqa: PLR0913
     encrypted_submission_dir: str,
     metadata_dir: str,
@@ -409,76 +303,11 @@ def decrypt(  # noqa: PLR0913
 
 
 @cli.command()
-@click.option(
-    "-s",
-    "--encrypted-submission-dir",
-    metavar="STRING",
-    type=click.Path(
-        exists=True, file_okay=False, dir_okay=True, readable=True, resolve_path=True
-    ),
-    required=True,
-    help="Path to the encrypted submission directory containing both 'metadata/' and 'encrypted_files/' directories",
-)
-@click.option(
-    "-m",
-    "--metadata-dir",
-    metavar="STRING",
-    type=click.Path(
-        exists=False,
-        file_okay=False,
-        dir_okay=True,
-        readable=True,
-        writable=True,
-        resolve_path=True,
-    ),
-    required=False,
-    default=None,
-    help="Path to the metadata directory containing the metadata.json file",
-)
-@click.option(
-    "-e",
-    "--encrypted-files-dir",
-    metavar="STRING",
-    type=click.Path(
-        exists=False,
-        file_okay=False,
-        dir_okay=True,
-        readable=True,
-        writable=True,
-        resolve_path=True,
-    ),
-    required=False,
-    default=None,
-    help="Path to the encrypted files linked in the submission",
-)
-@click.option(
-    "-w",
-    "--working-dir",
-    metavar="STRING",
-    type=click.Path(
-        exists=True,
-        file_okay=False,
-        dir_okay=True,
-        readable=True,
-        writable=True,
-        resolve_path=True,
-    ),
-    required=False,
-    default=None,
-    callback=lambda c, p, v: v if v else c.params["encrypted_submission_dir"],
-    help="Path to a working directory where intermediate files can be stored",
-)
-@click.option(
-    "-c",
-    "--config-file",
-    metavar="STRING",
-    type=click.Path(
-        exists=True, file_okay=True, dir_okay=False, readable=True, resolve_path=True
-    ),
-    required=True,
-    default="~/.config/grz_cli/config.yaml",
-    help="Path to config file",
-)
+@encrypted_submission_dir
+@metadata_dir
+@encrypted_files_dir
+@working_dir
+@config_file
 def upload(
     encrypted_submission_dir,
     metadata_dir,
@@ -520,59 +349,10 @@ def upload(
 
 @cli.command()
 @click.argument("submission_id", type=str)
-@click.option(
-    "-s",
-    "--encrypted-submission-dir",
-    metavar="STRING",
-    type=click.Path(
-        exists=True, file_okay=False, dir_okay=True, readable=True, resolve_path=True
-    ),
-    required=False,
-    help="Path to the encrypted submission directory containing both 'metadata/' and 'encrypted_files/' directories",
-)
-@click.option(
-    "-m",
-    "--metadata-dir",
-    metavar="STRING",
-    type=click.Path(
-        exists=False,
-        file_okay=False,
-        dir_okay=True,
-        readable=True,
-        writable=True,
-        resolve_path=True,
-    ),
-    required=False,
-    default=None,
-    help="Path to the metadata directory containing the metadata.json file",
-)
-@click.option(
-    "-e",
-    "--encrypted-files-dir",
-    metavar="STRING",
-    type=click.Path(
-        exists=False,
-        file_okay=False,
-        dir_okay=True,
-        readable=True,
-        writable=True,
-        resolve_path=True,
-    ),
-    required=False,
-    default=None,
-    help="Path to the encrypted files linked in the submission",
-)
-@click.option(
-    "-c",
-    "--config-file",
-    metavar="STRING",
-    type=click.Path(
-        exists=True, file_okay=True, dir_okay=False, readable=True, resolve_path=True
-    ),
-    required=True,
-    default="~/.config/grz_upload/config.yaml",
-    help="Path to config file",
-)
+@encrypted_submission_dir
+@metadata_dir
+@encrypted_files_dir
+@config_file
 def download(
     submission_id,
     encrypted_submission_dir,
