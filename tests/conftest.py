@@ -214,7 +214,7 @@ def config_content(
         "grz_private_key_path": str(crypt4gh_grz_private_key_file_path),
         "submitter_private_key_path": str(crypt4gh_grz_public_key_file_path),
         "s3_options": {
-            "endpoint_url": "",
+            "endpoint_url": "https://example.com",
             "bucket": "testing",
             "access_key": "testing",
             "secret": "testing",
@@ -225,6 +225,14 @@ def config_content(
 @pytest.fixture
 def config_model(config_content):
     return ConfigModel(**config_content)
+
+
+@pytest.fixture
+def config_model_without_endpoint_url(config_model):
+    # Remove the endpoint URL from config and disable assignment validation (because `""` is not a valid URL)
+    config_model.s3_options.model_config.update({"validate_assignment": False})
+    config_model.s3_options.endpoint_url = ""
+    return config_model
 
 
 @pytest.fixture

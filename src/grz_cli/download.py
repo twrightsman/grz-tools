@@ -56,7 +56,7 @@ class S3BotoDownloadWorker:
             region_name=empty_str_to_none(self._config.s3_options.region_name),
             api_version=empty_str_to_none(self._config.s3_options.api_version),
             use_ssl=empty_str_to_none(self._config.s3_options.use_ssl),
-            endpoint_url=empty_str_to_none(self._config.s3_options.endpoint_url),
+            endpoint_url=empty_str_to_none(str(self._config.s3_options.endpoint_url)),
             aws_access_key_id=empty_str_to_none(self._config.s3_options.access_key),
             aws_secret_access_key=empty_str_to_none(self._config.s3_options.secret),
             aws_session_token=empty_str_to_none(self._config.s3_options.session_token),

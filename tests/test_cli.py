@@ -1,6 +1,7 @@
 """Tests for the command line interface."""
 
 from pathlib import Path
+from unittest import mock
 
 import pytest
 from click.testing import CliRunner
@@ -147,7 +148,11 @@ def test_upload_submission(working_dir_path, temp_config_file_path, remote_bucke
         temp_config_file_path,
     ]
     runner = CliRunner()
-    result = runner.invoke(grz_cli.cli.cli, testargs, catch_exceptions=False)
+
+    # somehow, mock_aws does not catch the boto3 client properly here,
+    # so we mock the boto3 client manually
+    with mock.patch("botocore.client.BaseClient._make_api_call"):
+        result = runner.invoke(grz_cli.cli.cli, testargs, catch_exceptions=False)
 
     # TODO implement
     # check if upload to S3 bucket is working correctly

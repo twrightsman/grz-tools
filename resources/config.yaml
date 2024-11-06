@@ -9,7 +9,7 @@ grz_public_key_path: 'path/to/public/key.pub'
 
 s3_options:
   backend: 'boto3'  # either 'boto3' or 's3cmd'
-  endpoint_url: 'your-s3-url'
+  endpoint_url: 'https://your-s3-url'
   bucket: 'your-s3-bucket-name'
   access_key: 'your-s3-bucket-key'
   secret: 'your-s3-bucket-secret'
@@ -19,7 +19,7 @@ s3_options:
 # api_version: 'your-s3-api-version'
 # session_token: 'your-s3-session-token'
 # proxy_url: 'your-proxy-url'
-# use_ssl: true
+# use_ssl: true  # enabled by default
 
 #  # boto3 does not require any additional configuration
 #  boto3: {}

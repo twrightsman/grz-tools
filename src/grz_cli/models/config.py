@@ -2,7 +2,14 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Annotated
 
-from pydantic import AfterValidator, AnyUrl, BaseModel, ConfigDict, model_validator
+from pydantic import (
+    AfterValidator,
+    AnyHttpUrl,
+    AnyUrl,
+    BaseModel,
+    ConfigDict,
+    model_validator,
+)
 from pydantic.types import PathType
 
 
@@ -41,7 +48,7 @@ class S3Options(StrictBaseModel):
     The backend to use for S3 operations.
     """
 
-    endpoint_url: AnyUrl | str
+    endpoint_url: AnyHttpUrl
     """
     The URL for the S3 service.
     """
