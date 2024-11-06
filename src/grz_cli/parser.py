@@ -268,6 +268,7 @@ class Submission:
                 encrypted_files_dir
                 / EncryptedSubmission.get_encrypted_file_path(file_metadata.file_path)
             )
+            encrypted_file_path.parent.mkdir(mode=0o770, parents=True, exist_ok=True)
 
             if (
                 (logged_state is None)
