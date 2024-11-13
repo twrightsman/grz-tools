@@ -6,7 +6,7 @@ import pytest
 from moto import mock_aws
 
 from grz_cli.file_operations import calculate_sha256
-from grz_cli.upload import S3BotoUploadWorker
+from grz_cli.upload import S3BotoUploadWorker, _gather_files_to_upload
 
 
 @pytest.fixture(scope="module")
@@ -67,3 +67,44 @@ def test_boto_upload(
         calculate_sha256(local_tmpdir_path / "large_test_file.fastq")
         == temp_fastq_file_sha256sum
     )
+
+
+def test__gather_files_to_upload(encrypted_submission):
+    gathered_files = list(
+        map(lambda x: (str(x[0]), x[1]), _gather_files_to_upload(encrypted_submission))
+    )
+    expected_files = [
+        (
+            "tests/mock_files/submissions/valid_submission/metadata/metadata.json",
+            "aaaaaaaa00000000aaaaaaaa00000000/metadata/metadata.json",
+        ),
+        (
+            "tests/mock_files/submissions/valid_submission/encrypted_files/target_regions.bed.c4gh",
+            "aaaaaaaa00000000aaaaaaaa00000000/files/target_regions.bed.c4gh",
+        ),
+        (
+            "tests/mock_files/submissions/valid_submission/encrypted_files/aaaaaaaa00000000aaaaaaaa00000000_blood_normal.read1.fastq.gz.c4gh",
+            "aaaaaaaa00000000aaaaaaaa00000000/files/aaaaaaaa00000000aaaaaaaa00000000_blood_normal.read1.fastq.gz.c4gh",
+        ),
+        (
+            "tests/mock_files/submissions/valid_submission/encrypted_files/aaaaaaaa00000000aaaaaaaa00000000_blood_normal.read2.fastq.gz.c4gh",
+            "aaaaaaaa00000000aaaaaaaa00000000/files/aaaaaaaa00000000aaaaaaaa00000000_blood_normal.read2.fastq.gz.c4gh",
+        ),
+        (
+            "tests/mock_files/submissions/valid_submission/encrypted_files/aaaaaaaa00000000aaaaaaaa00000000_blood_tumor.read1.fastq.gz.c4gh",
+            "aaaaaaaa00000000aaaaaaaa00000000/files/aaaaaaaa00000000aaaaaaaa00000000_blood_tumor.read1.fastq.gz.c4gh",
+        ),
+        (
+            "tests/mock_files/submissions/valid_submission/encrypted_files/aaaaaaaa00000000aaaaaaaa00000000_blood_tumor.read2.fastq.gz.c4gh",
+            "aaaaaaaa00000000aaaaaaaa00000000/files/aaaaaaaa00000000aaaaaaaa00000000_blood_tumor.read2.fastq.gz.c4gh",
+        ),
+        (
+            "tests/mock_files/submissions/valid_submission/encrypted_files/aaaaaaaa00000000aaaaaaaa00000002_blood_normal.read1.fastq.gz.c4gh",
+            "aaaaaaaa00000000aaaaaaaa00000000/files/aaaaaaaa00000000aaaaaaaa00000002_blood_normal.read1.fastq.gz.c4gh",
+        ),
+        (
+            "tests/mock_files/submissions/valid_submission/encrypted_files/aaaaaaaa00000000aaaaaaaa00000002_blood_normal.read2.fastq.gz.c4gh",
+            "aaaaaaaa00000000aaaaaaaa00000000/files/aaaaaaaa00000000aaaaaaaa00000002_blood_normal.read2.fastq.gz.c4gh",
+        ),
+    ]
+    assert gathered_files == expected_files

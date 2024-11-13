@@ -65,7 +65,7 @@ class SubmissionMetadata:
     @property
     def files(self) -> dict[Path, SubmissionFileMetadata]:
         """
-        The files liked in the metadata.
+        The files linked in the metadata.
 
         :return: Dictionary of `file_path` -> `SubmissionFileMetadata` pairs.
             Each `file_path` refers to the relative file path from the metadata.

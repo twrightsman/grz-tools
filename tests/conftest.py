@@ -14,6 +14,7 @@ from moto import mock_aws
 
 from grz_cli.file_operations import Crypt4GH
 from grz_cli.models.config import ConfigModel
+from grz_cli.parser import EncryptedSubmission, SubmissionMetadata
 
 config_path = "tests/mock_files/mock_config.yaml"
 small_file_input_path = "tests/mock_files/mock_small_input_file.bed"
@@ -275,3 +276,26 @@ def remote_bucket(boto_s3_client, config_model):
     boto_s3_client.create_bucket(Bucket=config_model.s3_options.bucket)
 
     return boto3.resource("s3").Bucket(config_model.s3_options.bucket)
+
+
+@pytest.fixture
+def submission_metadata_dir() -> Path:
+    return Path("tests/mock_files/submissions/valid_submission/metadata")
+
+
+@pytest.fixture
+def submission_metadata(submission_metadata_dir) -> SubmissionMetadata:
+    return SubmissionMetadata(submission_metadata_dir / "metadata.json")
+
+
+@pytest.fixture
+def encrypted_files_dir() -> Path:
+    return Path("tests/mock_files/submissions/valid_submission/encrypted_files")
+
+
+@pytest.fixture
+def encrypted_submission(
+    submission_metadata_dir, encrypted_files_dir
+) -> EncryptedSubmission:
+    submission = EncryptedSubmission(submission_metadata_dir, encrypted_files_dir)
+    return submission

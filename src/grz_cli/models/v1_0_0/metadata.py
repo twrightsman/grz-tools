@@ -415,6 +415,9 @@ class File(StrictBaseModel):
                 f"Expected: '{self.file_size_in_bytes}', observed: '{local_file_path.stat().st_size}'."
             )
 
+    def encrypted_file_path(self):
+        return self.file_path + ".c4gh"
+
 
 class SequenceDatum(StrictBaseModel):
     bioinformatics_pipeline_name: str

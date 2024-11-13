@@ -30,6 +30,30 @@ class UploadError(Exception):
     pass
 
 
+def _gather_files_to_upload(
+    encrypted_submission: EncryptedSubmission,
+) -> list[tuple[Path, str]]:
+    """Gather the files to upload for an encrypted submission"""
+    submission_id = encrypted_submission.metadata.index_case_id
+    # metadata file is always present
+    files = [
+        (
+            Path(encrypted_submission.metadata.file_path),
+            str(Path(submission_id) / "metadata" / "metadata.json"),
+        )
+    ]
+
+    files += [
+        (
+            local_file_path,
+            str(Path(submission_id) / "files" / file_metadata.encrypted_file_path()),
+        )
+        for local_file_path, file_metadata in encrypted_submission.encrypted_files.items()
+    ]
+
+    return files
+
+
 class UploadWorker(metaclass=abc.ABCMeta):
     """Worker baseclass for uploading encrypted submissions"""
 
@@ -40,29 +64,19 @@ class UploadWorker(metaclass=abc.ABCMeta):
         :param encrypted_submission: The encrypted submission to upload
         :raises UploadError: when the upload failed
         """
-        submission_id = encrypted_submission.metadata.index_case_id
-        for (
-            local_file_path,
-            file_metadata,
-        ) in encrypted_submission.encrypted_files.items():
-            relative_file_path = file_metadata.file_path
-            s3_object_id = Path(submission_id) / "files" / relative_file_path
+        files_to_upload = _gather_files_to_upload(encrypted_submission)
 
+        for local_file_path, _ in files_to_upload:
+            if not Path(local_file_path).exists():
+                raise UploadError(f"File {local_file_path} does not exist")
+
+        for local_file_path, s3_object_id in files_to_upload:
             try:
-                self.upload_file(local_file_path, str(s3_object_id))
+                self.upload_file(local_file_path, s3_object_id)
             except Exception as e:
                 raise UploadError(
                     f"Failed to upload {local_file_path} (object id: {s3_object_id})"
                 ) from e
-
-        # upload the metadata file
-        s3_object_id = Path(submission_id) / "metadata" / "metadata.json"
-        try:
-            self.upload_file(encrypted_submission.metadata.file_path, str(s3_object_id))
-        except Exception as e:
-            raise UploadError(
-                f"Failed to upload metadata: {encrypted_submission.metadata.file_path} (object id: {s3_object_id})"
-            ) from e
 
     @abc.abstractmethod
     def upload_file(self, local_file_path: str | PathLike, s3_object_id: str):
