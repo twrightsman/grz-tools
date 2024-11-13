@@ -4,19 +4,23 @@ from __future__ import annotations
 
 import abc
 import logging
-from hashlib import sha256
-from os import PathLike
+import math
+from os import PathLike, cpu_count
 from os.path import getsize
 from pathlib import Path
-from traceback import format_exc
 from typing import TYPE_CHECKING, override
 
 import boto3  # type: ignore[import-untyped]
 from boto3 import client as boto3_client  # type: ignore[import-untyped]
+from boto3.s3.transfer import S3Transfer, TransferConfig  # type: ignore[import-untyped]
 from botocore.config import Config as Boto3Config  # type: ignore[import-untyped]
 from tqdm.auto import tqdm
 
 from .models.config import ConfigModel
+
+MULTIPART_THRESHOLD = 8 * 1024 * 1024  # 8MiB, boto3 default
+MULTIPART_CHUNKSIZE = 8 * 1024 * 1024  # 8MiB, boto3 default
+MULTIPART_MAX_CHUNKS = 1000  # CEPH S3 limit, AWS limit is 10000
 
 if TYPE_CHECKING:
     from .parser import EncryptedSubmission
@@ -93,10 +97,12 @@ class S3BotoUploadWorker(UploadWorker):
 
     __log = log.getChild("S3BotoUploadWorker")
 
-    MULTIPART_CHUNK_SIZE = 200 * 1024 * 1024  # 200 MB
-    MAX_SINGLEPART_UPLOAD_SIZE = 5 * 1024 * 1024  # 5 MB
-
-    def __init__(self, config: ConfigModel, status_file_path: str | PathLike):
+    def __init__(
+        self,
+        config: ConfigModel,
+        status_file_path: str | PathLike,
+        threads: int | None = None,
+    ):
         """
         An upload manager for S3 storage
 
@@ -107,6 +113,7 @@ class S3BotoUploadWorker(UploadWorker):
 
         self._status_file_path = Path(status_file_path)
         self._config = config
+        self._threads = threads or cpu_count()
 
         self._init_s3_client()
 
@@ -130,21 +137,13 @@ class S3BotoUploadWorker(UploadWorker):
             service_name="s3",
             region_name=empty_str_to_none(self._config.s3_options.region_name),
             api_version=empty_str_to_none(self._config.s3_options.api_version),
-            use_ssl=empty_str_to_none(str(self._config.s3_options.use_ssl).lower()),
+            use_ssl=self._config.s3_options.use_ssl,
             endpoint_url=empty_str_to_none(str(self._config.s3_options.endpoint_url)),
             aws_access_key_id=empty_str_to_none(self._config.s3_options.access_key),
             aws_secret_access_key=empty_str_to_none(self._config.s3_options.secret),
             aws_session_token=empty_str_to_none(self._config.s3_options.session_token),
             config=config,
         )
-
-    # def show_information(self):
-    #     self.__log.info(f"total files in metafile: {self.__file_total}")
-    #     self.__log.info(f"uploaded files: {self.__file_done}")
-    #     self.__log.info(f"failed files: {self.__file_failed}")
-    #     self.__log.info(
-    #         f"already finished files before current upload: {self.__file_prefinished}"
-    #     )
 
     def _multipart_upload(self, local_file, s3_object_id):
         """
@@ -154,80 +153,33 @@ class S3BotoUploadWorker(UploadWorker):
         :param s3_object_id: string
         :return: sha256 value for uploaded file
         """
-        multipart_upload = self._s3_client.create_multipart_upload(
-            Bucket=self._config.s3_options.bucket, Key=s3_object_id
-        )
-        upload_id = multipart_upload["UploadId"]
-        parts = []
-        part_number = 1
+        filesize = getsize(local_file)
 
-        # Get the file size for progress bar
-        file_size = getsize(local_file)
-        # initialize progress bar
+        chunksize = (
+            math.ceil(filesize / MULTIPART_MAX_CHUNKS)
+            if filesize / MULTIPART_CHUNKSIZE > MULTIPART_MAX_CHUNKS
+            else MULTIPART_CHUNKSIZE
+        )
+        self.__log.debug(
+            f"Using a chunksize of: {chunksize / 1024**2}MiB, results in {filesize/chunksize} chunks"
+        )
+
+        config = TransferConfig(
+            multipart_threshold=MULTIPART_THRESHOLD,
+            multipart_chunksize=chunksize,
+            max_concurrency=self._threads,
+        )
+
+        transfer = S3Transfer(self._s3_client, config)
         progress_bar = tqdm(
-            total=file_size, unit="B", unit_scale=True, unit_divisor=1024
+            total=filesize, unit="B", unit_scale=True, unit_divisor=1024
         )
-
-        try:
-            # Initialize sha256 calculations
-            original_sha256 = sha256()
-
-            with open(local_file, "rb") as infile:
-                # Process the file in chunks
-                while chunk := infile.read(S3BotoUploadWorker.MULTIPART_CHUNK_SIZE):
-                    original_sha256.update(chunk)
-                    # Upload each chunk
-                    part = self._s3_client.upload_part(
-                        Bucket=self._config.s3_options.bucket,
-                        Key=s3_object_id,
-                        PartNumber=part_number,
-                        UploadId=upload_id,
-                        Body=chunk,
-                    )
-                    progress_bar.update(len(chunk))
-                    parts.append({"PartNumber": part_number, "ETag": part["ETag"]})
-                    part_number += 1
-
-            # Complete the multipart upload
-            self._s3_client.complete_multipart_upload(
-                Bucket=self._config.s3_options.bucket,
-                Key=s3_object_id,
-                UploadId=upload_id,
-                MultipartUpload={"Parts": parts},
-            )
-            progress_bar.close()  # close progress bar
-            return original_sha256.hexdigest()
-
-        except Exception as e:
-            for i in format_exc().split("\n"):
-                log.error(i)
-            self._s3_client.abort_multipart_upload(
-                Bucket=self._config.s3_options.bucket,
-                Key=s3_object_id,
-                UploadId=upload_id,
-            )
-            raise e
-
-    def _upload(self, local_file, s3_object_id):
-        """
-        Upload the file to S3.
-
-        :param local_file: pathlib.Path()
-        :param s3_object_id: string
-        :return: sha256 values for original file
-        """
-        try:
-            with open(local_file, "rb") as fd:
-                # calculate sha256sum
-                # original_sha256 = sha256(data)
-
-                # Upload data
-                self._s3_client.put_object(
-                    Bucket=self._config.s3_options.bucket, Key=s3_object_id, Body=fd
-                )
-            # return original_sha256.hexdigest()
-        except Exception as e:
-            raise e
+        transfer.upload_file(
+            local_file,
+            self._config.s3_options.bucket,
+            s3_object_id,
+            callback=lambda bytes_transferred: progress_bar.update(bytes_transferred),
+        )
 
     @override
     def upload_file(self, local_file_path, s3_object_id):
@@ -238,11 +190,4 @@ class S3BotoUploadWorker(UploadWorker):
         """
         self.__log.info(f"Uploading {local_file_path} to {s3_object_id}...")
 
-        # Get the file size to decide whether to use multipart upload
-        file_size = getsize(local_file_path)
-        if file_size > S3BotoUploadWorker.MAX_SINGLEPART_UPLOAD_SIZE:
-            # do multipart upload
-            _sha256sums = self._multipart_upload(local_file_path, s3_object_id)
-        else:
-            _sha256sums = self._upload(local_file_path, s3_object_id)
-        # TODO: check sha256sums
+        self._multipart_upload(local_file_path, s3_object_id)

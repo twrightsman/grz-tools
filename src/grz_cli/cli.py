@@ -122,6 +122,13 @@ decrypted_files_dir = click.option(
     help="Path to a directory where the decrypted files can be stored",
 )
 
+threads = click.option(
+    "--threads",
+    default=None,
+    type=int,
+    help="Number of threads to use for parallel operations",
+)
+
 
 class OrderedGroup(click.Group):
     """
@@ -175,7 +182,12 @@ def cli(log_file: str | None = None, log_level: str = "INFO"):
 @metadata_dir
 @files_dir
 @working_dir
-def validate(submission_dir: str, metadata_dir: str, files_dir: str, working_dir: str):
+def validate(
+    submission_dir: str,
+    metadata_dir: str,
+    files_dir: str,
+    working_dir: str,
+):
     """
     Validates the sha256 checksum of the sequence data files. This command must be executed
     before the encryption and upload can start.
@@ -296,12 +308,14 @@ def decrypt(  # noqa: PLR0913
 @encrypted_files_dir
 @working_dir
 @config_file
-def upload(
+@threads
+def upload(  # noqa: PLR0913
     submission_dir,
     metadata_dir,
     encrypted_files_dir,
     working_dir,
     config_file,
+    threads,
 ):
     """
     Upload a submission file to s3 using the provided configuration.
@@ -310,6 +324,7 @@ def upload(
     :param encrypted_files_dir: The path to the encrypted files directory.
     :param working_dir: Path to a working directory where intermediate files can be stored
     :param config_file: The path to the configuration file.
+    :param threads: Number of threads to use for concurrent upload
     """
     config = read_config(config_file)
 
@@ -325,6 +340,7 @@ def upload(
             if encrypted_files_dir is None
             else encrypted_files_dir
         ),
+        threads=threads,
     )
     worker_inst.upload(config)
 

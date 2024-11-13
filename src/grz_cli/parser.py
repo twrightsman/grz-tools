@@ -468,13 +468,14 @@ class Worker:
 
     __log = log.getChild("Worker")
 
-    def __init__(
+    def __init__(  # noqa: PLR0913
         self,
         working_dir: str | PathLike | None = None,
         metadata_dir: str | PathLike | None = None,
         files_dir: str | PathLike | None = None,
         encrypted_files_dir: str | PathLike | None = None,
         log_dir: str | PathLike | None = None,
+        threads: int | None = None,
     ):
         """
         Initialize the worker object.
@@ -484,8 +485,10 @@ class Worker:
         :param files_dir: Path to the files directory
         :param encrypted_files_dir: Path to the encrypted files directory
         :param log_dir: Path to the log directory
+        :param threads: Number of threads to use
         """
         self.working_dir = Path(working_dir) if working_dir is not None else Path.cwd()
+        self._threads = threads
 
         self.__log.debug("Working directory: %s", self.working_dir)
 
