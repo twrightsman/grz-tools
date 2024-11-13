@@ -5,12 +5,14 @@ from __future__ import annotations
 import abc
 import logging
 import math
+import re
 from os import PathLike, cpu_count
 from os.path import getsize
 from pathlib import Path
 from typing import TYPE_CHECKING, override
 
 import boto3  # type: ignore[import-untyped]
+import botocore.handlers  # type: ignore[import-untyped]
 from boto3 import client as boto3_client  # type: ignore[import-untyped]
 from boto3.s3.transfer import S3Transfer, TransferConfig  # type: ignore[import-untyped]
 from botocore.config import Config as Boto3Config  # type: ignore[import-untyped]
@@ -26,6 +28,9 @@ if TYPE_CHECKING:
     from .parser import EncryptedSubmission
 
 log = logging.getLogger(__name__)
+
+# see discussion: https://github.com/boto/boto3/discussions/4251 for acception bucketnames with : in the name
+botocore.handlers.VALID_BUCKET = re.compile(r"^[:a-zA-Z0-9.\-_]{1,255}$")  # type: ignore[import-untyped]
 
 
 class UploadError(Exception):
