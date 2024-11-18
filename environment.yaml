@@ -1,4 +1,4 @@
-name: grz-upload-client
+name: grz-tools
 channels:
   - conda-forge
   - bioconda

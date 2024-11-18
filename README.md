@@ -1,6 +1,6 @@
 # GRZ CLI
 
-A tool to encrypt and upload files to S3 with MD5 checksum logging.
+A command-line tool for validating, encrypting, uploading and downloading submissions to/from a GDC/GRZ (Genomrechenzentrum).
 
 ## Table of Contents
 
@@ -8,114 +8,189 @@ A tool to encrypt and upload files to S3 with MD5 checksum logging.
 - [Features](#features)
 - [Installation](#installation)
 - [Usage](#usage)
-  - [Command-Line Interface](#command-line-interface)
   - [Configuration](#configuration)
-- [Example](#example)
+  - [Exemplary submission procedure](#exemplary-submission-procedure)
+- [Command-Line Interface](#command-line-interface)
 - [Testing](#testing)
-- [Project Structure](#project-structure)
 - [Contributing](#contributing)
 - [License](#license)
 - [Acknowledgements](#acknowledgements)
 
 ## Introduction
 
-This tool provides a streamlined way to encrypt files using the `crypt4gh` library, calculate MD5 checksums for both the original and encrypted files, and upload the encrypted files to an S3 bucket. It also logs the progress and outcomes of these operations in a metadata file.
+This tool provides a way to validate files, encrypt/decrypt files using the [crypt4gh](https://crypt4gh.readthedocs.io/en/latest/) library and upload/download the encrypted files to an S3 bucket of a GDC/GRZ. It also logs the progress and outcomes of these operations in a metadata file.
 
+It is recommended to have the following folder structure for a single submission:
+
+```
+EXAMPLE_SUBMISSION
+├── files
+│   ├── aaaaaaaa00000000aaaaaaaa00000000_blood_normal.read1.fastq.gz
+│   ├── aaaaaaaa00000000aaaaaaaa00000000_blood_normal.read2.fastq.gz
+│   ├── aaaaaaaa00000000aaaaaaaa00000000_blood_normal.vcf
+│   ├── aaaaaaaa00000000aaaaaaaa00000000_blood_tumor.read1.fastq.gz
+│   ├── aaaaaaaa00000000aaaaaaaa00000000_blood_tumor.read2.fastq.gz
+│   ├── aaaaaaaa00000000aaaaaaaa00000000_blood_tumor.vcf
+│   ├── target_regions.bed
+└── metadata
+    └── metadata.json
+```
+
+The current version of the tool requires the `working_dir` to have at least as much free disk space as the total size of the data being submitted.
 ## Features
 
-- **File Encryption**: Encrypt files using `crypt4gh`.
-- **MD5 Checksum Calculation**: Calculate and log MD5 checksums for both original and encrypted files.
-- **S3 Upload**: Upload encrypted files directly to an S3 bucket.
-- **Progress Logging**: Log the progress and results of operations in a metadata CSV file.
+- **Validation**: Validate file checksums, basic file metadata and BfArM requirements.
+- **Encryption**: Encrypt files using `crypt4gh`.
+- **Decryption**: Encrypt files using `crypt4gh`.
+- **Upload**: Upload encrypted files directly to a GRZ either (via built-in `boto3` or external `s3cmd`).
+- **Download**: Download encrypted files from a GRZ.
+- **Logging**: Log progress and results of operations
 
 ## Installation
 
-To install this package, download the `grz_cli.zip` file and install it using `pip`:
-
+### End-user
+This tool uses the `conda` package manager.
+If `conda` is not yet available on your system, you can install the [Miniforge conda distribution](https://github.com/conda-forge/miniforge) by running the following commands:
 ```bash
-pip install grz_cli.zip
+curl -L -O "https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-$(uname)-$(uname -m).sh"
+bash Miniforge3-$(uname)-$(uname -m).sh
+```
+Next, install the `grz-cli` tool:
+```bash
+# TODO update: This requires membership in the repository
+# download environment.yaml from the git repository:
+git archive --remote=ssh://git@codebase.helmholtz.cloud/grz-mv-genomseq/grz-cli.git dev environment.yaml | tar -xv
+# TODO update: This will work once the repository is publicly accessible:
+# download environment.yaml from the git repository:
+curl -L "https://codebase.helmholtz.cloud/grz-mv-genomseq/grz-cli/-/raw/v0.1.0/environment.yaml?ref_type=heads" > environment.yaml
+
+# create conda environment and activate it
+conda env create -f environment.yaml -n grz-tools
+conda activate grz-tools
+
+# install the grz-cli tool
+# TODO update: This requires membership in the repository
+pip install "git+ssh://git@codebase.helmholtz.cloud/grz-mv-genomseq/grz-cli.git@dev"
+# TODO update: This will work once the repository is publicly accessible:
+pip install "git+https://codebase.helmholtz.cloud/grz-mv-genomseq/grz-cli@v0.1.0"
 ```
 
-to test edits to the code, you can use
+### Development setup
+For development purposes, you can clone the repository and install the package in editable mode:
 
 ```bash
-pip install -e grz_cli.zip
+git clone https://codebase.helmholtz.cloud/grz-mv-genomseq/grz-cli
+# create conda environment and activate it
+conda env create -f grz-cli/environment-dev.yaml -n grz-tools-dev
+conda activate grz-tools-dev
+# install the grz-cli tool
+pip install -e grz-cli/
 ```
 
 ## Usage
 
-### Command-Line Interface
-
-The tool can be run from the command line using the `encrypt-upload` command. Ensure you have your configuration file ready.
-
-```bash
-encrypt-upload --config path/to/config.yaml
-```
-
 ### Configuration
+**The configuration file will be provided by your associated GRZ, please place it into `~/.config/grz-cli/config.yaml`.**
 
-The configuration file (in YAML format) should include the following parameters:
+The tool requires a configuration file in YAML format to specify the S3 bucket and other options.
+For an exemplary configuration, see [resources/config.yaml](resources/config.yaml).
 
-- `metadata_file_path`: Path to the metadata CSV file containing file details.
-- `public_key_path`: Path to the grz public key used for encryption.
-- `s3_url`: Address for your S3 endpoint
-- `s3_access_key`: Users access key for S3
-- `s3_secret`: Users secret for S3
-- `s3_bucket`: Name of the S3 bucket where encrypted files will be uploaded.
+S3 access and secret key can be listed either in the config file or as environment variable (`AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`).
 
-Example `config.yaml`:
+### Exemplary submission procedure
+After preparing your submission as outlined above, you can use the following commands to validate, encrypt and upload the submission: 
+```sh
+# Validate the submission
+grz-cli validate --submission-dir EXAMPLE_SUBMISSION
 
-```yaml
-metadata_file_path: 'path/to/metadata_file.csv'
-public_key_path: 'path/to/public/key'
-s3_url: 'your-s3-url'
-s3_bucket: 'your-s3-bucket-name'
-s3_access_key: 'your-s3-bucket-key'
-s3_secret: 'your-s3-bucket-secret'
+# Encrypt the submission
+grz-cli encrypt --submission-dir EXAMPLE_SUBMISSION
+
+# Upload the submission
+grz-cli upload --submission-dir EXAMPLE_SUBMISSION
 ```
 
-## Example
+## Command-Line Interface
 
-Here's an example of how to use this tool:
+`grz-cli` provides a command-line interface with the following subcommands:
 
-1. Prepare your `config.yaml` file with the appropriate paths and S3 bucket name.
-2. Ensure your metadata CSV file is correctly formatted with at least `File id` and `File Location` columns.
-3. Run the tool using the command:
+### validate
+
+It is recommended to run this command before continuing with encryption and upload.
+Progress files are stored relative to the submission directory.
+
+- `--submission-dir`: Path to the submission directory containing both 'metadata/' and 'files/' directories [**Required**]
+
+Example usage:
 
 ```bash
-encrypt-upload --config path/to/config.yaml
+grz_cli validate --submission-dir foo
 ```
 
-This will start the encryption and upload process, logging progress in the metadata file.
+Option is for the usage at a hospital (Leistungserbringer) and GDC/GRZ.
+
+### encrypt
+
+If a working directory is not provided, then the current directory is used automatically. The log-files are going to be stored in the sub-folder of the working directory.
+Files are stored in a folder named `encrypted_files` as a sub-folder of the working directory.
+
+- `-s, --submission-dir`: Path to the submission directory containing both 'metadata/' and 'files/' directories [**Required**]
+- `-c, --config-file`: Path to config file [_optional_]
+
+```bash
+grz-cli encrypt --submission-dir foo
+```
+
+Option is for the usage at a hospital (Leistungserbringer). Please approach your GDC/GRZ for a valid config file.
+
+### decrypt
+
+Decrypt a submission using the GRZ private key.
+
+- `-s, --submission-dir`: Path to the submission directory containing both 'metadata/' and 'encrypted_files/' directories  [**Required**]
+- `-c,--config-file`: Path to config file [_optional_]
+
+```bash
+grz-cli decrypt --submission-dir foo
+```
+
+Option is for the usage at a GDC/GRZ.
+
+### upload
+
+Upload the submission into a S3 structure of a GRZ.
+
+- `-s, --submission-dir`: Path to the submission directory containing both 'metadata/' and 'encrypted_files/' directories [**Required**]
+- `-c, --config-file`: Path to config file [_optional_]
+
+Example usage:
+
+```bash
+grz-cli upload --submission-dir foo
+```
+
+Option is for the usage at a hospital (Leistungserbringer). Please approach your GDC/GRZ for a valid config file.
+
+### download
+
+Download a submission from a GRZ
+
+- `-s, --submission-id`: S3 submission prefix [**Required**]
+- `-o, --output-dir`: Path to the target submission output directory [**Required**]
+- `-c, --config-file`: Path to config file [_optional_]
+
+Example usage:
+
+```bash
+grz-cli download SUBMISSION_ID --submission-id foo --output-dir bar
+```
+
+Option is for the usage at a GDC/GRZ.
 
 ## Testing
 
-To run the tests, navigate to the root directory of your project and execute:
-
-```bash
-python -m unittest discover tests
-```
-
-This will discover and run all the test cases in the `tests` directory.
-
-## Project Structure
-
-```
-grz_cli/
-│
-├── grz_cli/
-│   ├── __init__.py
-│   ├── encrypt_upload.py
-│   ├── config.yaml
-│
-├── tests/
-│   ├── __init__.py
-│   └── test_encrypt_upload.py
-│
-├── pyproject.toml
-├── README.md
-└── LICENSE
-```
+To run the tests, navigate to the root directory of your project and invoke `pytest`.
+Alternatively, install `uv` and `tox` and run `uv run tox`.
 
 ## Contributing
 
@@ -127,10 +202,5 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## Acknowledgements
 
-parts of cryp4gh code is used in modified form
+Parts of `cryp4gh` code is used in modified form
 
-# To Do
-- logging not working properly
-- check if file id has extension, add correct extension and .c4gh
-- catch user interruption and kill multipart upload
-- check for all open multipart uploads and clean them
