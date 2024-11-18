@@ -318,13 +318,7 @@ def upload(  # noqa: PLR0913
     threads,
 ):
     """
-    Upload a submission file to s3 using the provided configuration.
-    :param submission_dir: The path to the encrypted submission directory.
-    :param metadata_dir: The path to the metadata directory.
-    :param encrypted_files_dir: The path to the encrypted files directory.
-    :param working_dir: Path to a working directory where intermediate files can be stored
-    :param config_file: The path to the configuration file.
-    :param threads: Number of threads to use for concurrent upload
+    Upload a submission to a GRZ/GDC using the provided configuration.
     """
     config = read_config(config_file)
 
