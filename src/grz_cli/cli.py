@@ -356,11 +356,8 @@ def download(
 ):
     """
     Download a submission file from s3 using the provided configuration.
-    :param submission_id: Submission id
-    :param submission_dir: The path to the encrypted submission directory.
-    :param metadata_dir: The path to the metadata directory.
-    :param encrypted_files_dir: The path to the encrypted files directory.
-    :param config_file: The path to the configuration file.
+
+    The SUBMISSION_ID is the same as the value of `tanG` in the metadata.json.
     """
     config = read_config(config_file)
 
