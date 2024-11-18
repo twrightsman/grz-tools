@@ -110,6 +110,9 @@ grz-cli encrypt --submission-dir EXAMPLE_SUBMISSION
 grz-cli upload --submission-dir EXAMPLE_SUBMISSION
 ```
 
+### Troubleshooting
+**In case of issues, please re-run your commands with `grz-cli --log-level DEBUG --log-file <your-log-file.log> [...]` and submit the log file to the GRZ data steward!**
+
 ## Command-Line Interface
 
 `grz-cli` provides a command-line interface with the following subcommands:
