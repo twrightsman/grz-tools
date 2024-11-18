@@ -1,4 +1,3 @@
-from enum import StrEnum
 from pathlib import Path
 from typing import Annotated
 
@@ -8,7 +7,6 @@ from pydantic import (
     AnyUrl,
     BaseModel,
     ConfigDict,
-    model_validator,
 )
 from pydantic.types import PathType
 
@@ -21,33 +19,7 @@ class StrictBaseModel(BaseModel):
     )
 
 
-class Backend(StrEnum):
-    """
-    The backend to use for S3 operations.
-    """
-
-    boto3 = "boto3"
-    s3cmd = "s3cmd"
-
-
-class Boto3(StrictBaseModel):
-    pass
-
-
-class S3cmd(StrictBaseModel):
-    """
-    Additional configuration for s3cmd (required if backend is 's3cmd').
-    """
-
-    host_bucket: str
-
-
 class S3Options(StrictBaseModel):
-    backend: Backend = Backend.boto3
-    """
-    The backend to use for S3 operations.
-    """
-
     endpoint_url: AnyHttpUrl
     """
     The URL for the S3 service.
@@ -92,24 +64,6 @@ class S3Options(StrictBaseModel):
     """
     The proxy URL for S3 operations (optional).
     """
-
-    boto3: Boto3 | None = None
-    """
-    Additional configuration for boto3.
-    """
-
-    s3cmd: S3cmd | None = None
-    """
-    Additional configuration for s3cmd (required if backend is 's3cmd').
-    """
-
-    @model_validator(mode="after")
-    def validate_s3_options(self):
-        if self.backend == Backend.s3cmd and self.s3cmd is None:
-            raise ValueError(
-                "s3cmd configuration is required when using the 's3cmd' backend"
-            )
-        return self
 
 
 FilePath = Annotated[Path, AfterValidator(lambda v: v.expanduser()), PathType("file")]

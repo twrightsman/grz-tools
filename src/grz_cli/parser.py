@@ -10,7 +10,7 @@ from pathlib import Path
 
 from .download import S3BotoDownloadWorker
 from .file_operations import Crypt4GH, calculate_sha256
-from .models.config import Backend, ConfigModel
+from .models.config import ConfigModel
 from .models.v1_0_0.metadata import File as SubmissionFileMetadata
 from .models.v1_0_0.metadata import GrzSubmissionMetadata
 from .upload import S3BotoUploadWorker
@@ -665,12 +665,9 @@ class Worker:
         Upload an encrypted submission
 
         """
-        if config.s3_options.backend == Backend.s3cmd:
-            raise NotImplementedError()
-        else:
-            upload_worker = S3BotoUploadWorker(
-                config, status_file_path=self.progress_file_upload
-            )
+        upload_worker = S3BotoUploadWorker(
+            config, status_file_path=self.progress_file_upload
+        )
 
         encrypted_submission = self.parse_encrypted_submission()
 
@@ -681,12 +678,9 @@ class Worker:
         Download an encrypted submission
 
         """
-        if config.s3_options.backend == Backend.s3cmd:
-            raise NotImplementedError()
-        else:
-            download_worker = S3BotoDownloadWorker(
-                config, status_file_path=self.progress_file_download
-            )
+        download_worker = S3BotoDownloadWorker(
+            config, status_file_path=self.progress_file_upload
+        )
 
         submission_id = self.metadata_dir.parent.name
         submission_dir = download_worker.prepare_download(self.metadata_dir)
