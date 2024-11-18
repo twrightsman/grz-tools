@@ -6,7 +6,7 @@ import pytest
 from moto import mock_aws
 
 from grz_cli.file_operations import calculate_sha256
-from grz_cli.upload import S3BotoUploadWorker, _gather_files_to_upload
+from grz_cli.upload import S3BotoUploadWorker
 
 
 @pytest.fixture(scope="module")
@@ -70,14 +70,16 @@ def test_boto_upload(
 
 
 def test__gather_files_to_upload(encrypted_submission):
-    gathered_files = list(
-        map(lambda x: (str(x[0]), x[1]), _gather_files_to_upload(encrypted_submission))
+    metadata_file_path, metadata_s3_object_id = (
+        encrypted_submission.get_metadata_file_path_and_object_id()
     )
+    gathered_files = encrypted_submission.get_encrypted_files_and_object_id()
+    gathered_files[metadata_file_path] = metadata_s3_object_id
+    gathered_files = sorted(
+        [(str(key), str(value)) for key, value in gathered_files.items()]
+    )
+
     expected_files = [
-        (
-            "tests/mock_files/submissions/valid_submission/metadata/metadata.json",
-            "aaaaaaaa00000000aaaaaaaa00000000/metadata/metadata.json",
-        ),
         (
             "tests/mock_files/submissions/valid_submission/encrypted_files/target_regions.bed.c4gh",
             "aaaaaaaa00000000aaaaaaaa00000000/files/target_regions.bed.c4gh",
@@ -106,5 +108,10 @@ def test__gather_files_to_upload(encrypted_submission):
             "tests/mock_files/submissions/valid_submission/encrypted_files/aaaaaaaa00000000aaaaaaaa00000002_blood_normal.read2.fastq.gz.c4gh",
             "aaaaaaaa00000000aaaaaaaa00000000/files/aaaaaaaa00000000aaaaaaaa00000002_blood_normal.read2.fastq.gz.c4gh",
         ),
+        (
+            "tests/mock_files/submissions/valid_submission/metadata/metadata.json",
+            "aaaaaaaa00000000aaaaaaaa00000000/metadata/metadata.json",
+        ),
     ]
+    expected_files = sorted(expected_files)
     assert gathered_files == expected_files

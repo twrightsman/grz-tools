@@ -349,6 +349,29 @@ class EncryptedSubmission:
 
         return retval
 
+    def get_metadata_file_path_and_object_id(self) -> tuple[Path, str]:
+        """
+        :return: tuple with the `local_file_path` and s3_object_id of the metadata file
+        """
+        return Path(self.metadata.file_path), str(
+            Path(self.metadata.index_case_id)
+            / "metadata"
+            / self.metadata.file_path.name
+        )
+
+    def get_encrypted_files_and_object_id(self) -> dict[Path, str]:
+        """
+        :return Dictionary of `local_file_path` -> s3_object_id
+        """
+        retval = {}
+        for local_file_path, file_metadata in self.encrypted_files.items():
+            retval[local_file_path] = str(
+                Path(self.metadata.index_case_id)
+                / "files"
+                / self.get_encrypted_file_path(file_metadata.file_path)
+            )
+        return retval
+
     @staticmethod
     def get_encrypted_file_path(file_path: str | PathLike) -> Path:
         """
@@ -662,7 +685,7 @@ class Worker:
             raise NotImplementedError()
         else:
             download_worker = S3BotoDownloadWorker(
-                config, status_file_path=self.progress_file_upload
+                config, status_file_path=self.progress_file_download
             )
 
         submission_id = self.metadata_dir.parent.name

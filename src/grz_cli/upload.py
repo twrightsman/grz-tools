@@ -19,6 +19,7 @@ from botocore.config import Config as Boto3Config  # type: ignore[import-untyped
 from tqdm.auto import tqdm
 
 from .models.config import ConfigModel
+from .progress_logging import FileProgressLogger
 
 MULTIPART_THRESHOLD = 8 * 1024 * 1024  # 8MiB, boto3 default
 MULTIPART_CHUNKSIZE = 8 * 1024 * 1024  # 8MiB, boto3 default
@@ -39,33 +40,10 @@ class UploadError(Exception):
     pass
 
 
-def _gather_files_to_upload(
-    encrypted_submission: EncryptedSubmission,
-) -> list[tuple[Path, str]]:
-    """Gather the files to upload for an encrypted submission"""
-    submission_id = encrypted_submission.metadata.index_case_id
-    # metadata file is always present
-    files = [
-        (
-            Path(encrypted_submission.metadata.file_path),
-            str(Path(submission_id) / "metadata" / "metadata.json"),
-        )
-    ]
-
-    files += [
-        (
-            local_file_path,
-            str(Path(submission_id) / "files" / file_metadata.encrypted_file_path()),
-        )
-        for local_file_path, file_metadata in encrypted_submission.encrypted_files.items()
-    ]
-
-    return files
-
-
 class UploadWorker(metaclass=abc.ABCMeta):
     """Worker baseclass for uploading encrypted submissions"""
 
+    @abc.abstractmethod
     def upload(self, encrypted_submission: EncryptedSubmission):
         """
         Upload an encrypted submission
@@ -73,19 +51,7 @@ class UploadWorker(metaclass=abc.ABCMeta):
         :param encrypted_submission: The encrypted submission to upload
         :raises UploadError: when the upload failed
         """
-        files_to_upload = _gather_files_to_upload(encrypted_submission)
-
-        for local_file_path, _ in files_to_upload:
-            if not Path(local_file_path).exists():
-                raise UploadError(f"File {local_file_path} does not exist")
-
-        for local_file_path, s3_object_id in files_to_upload:
-            try:
-                self.upload_file(local_file_path, s3_object_id)
-            except Exception as e:
-                raise UploadError(
-                    f"Failed to upload {local_file_path} (object id: {s3_object_id})"
-                ) from e
+        raise NotImplementedError()
 
     @abc.abstractmethod
     def upload_file(self, local_file_path: str | PathLike, s3_object_id: str):
@@ -150,15 +116,16 @@ class S3BotoUploadWorker(UploadWorker):
             config=config,
         )
 
-    def _multipart_upload(self, local_file, s3_object_id):
+    @override
+    def upload_file(self, local_file_path, s3_object_id):
         """
-        Upload the file in chunks to S3.
+        Upload a single file to the specified object ID
+        :param local_file_path: Path to the file to upload
+        :param s3_object_id: Remote S3 object ID under which the file should be stored
+        """
+        self.__log.info(f"Uploading {local_file_path} to {s3_object_id}...")
 
-        :param local_file: pathlib.Path()
-        :param s3_object_id: string
-        :return: sha256 value for uploaded file
-        """
-        filesize = getsize(local_file)
+        filesize = getsize(local_file_path)
 
         chunksize = (
             math.ceil(filesize / MULTIPART_MAX_CHUNKS)
@@ -180,19 +147,97 @@ class S3BotoUploadWorker(UploadWorker):
             total=filesize, unit="B", unit_scale=True, unit_divisor=1024
         )
         transfer.upload_file(
-            local_file,
+            local_file_path,
             self._config.s3_options.bucket,
             s3_object_id,
             callback=lambda bytes_transferred: progress_bar.update(bytes_transferred),
         )
 
     @override
-    def upload_file(self, local_file_path, s3_object_id):
+    def upload(self, encrypted_submission: EncryptedSubmission):
         """
-        Upload a single file to the specified object ID
-        :param local_file_path: Path to the file to upload
-        :param s3_object_id: Remote S3 object ID under which the file should be stored
+        Upload an encrypted submission
+        :param encrypted_submission: The encrypted submission to upload
         """
-        self.__log.info(f"Uploading {local_file_path} to {s3_object_id}...")
+        progress_logger = FileProgressLogger(self._status_file_path)
+        metadata_file_path, metadata_s3_object_id = (
+            encrypted_submission.get_metadata_file_path_and_object_id()
+        )
+        files_to_upload = encrypted_submission.get_encrypted_files_and_object_id()
+        files_to_upload[metadata_file_path] = metadata_s3_object_id
 
-        self._multipart_upload(local_file_path, s3_object_id)
+        for file_path in files_to_upload:
+            if not Path(file_path).exists():
+                raise UploadError(f"File {file_path} does not exist")
+
+        for file_path, file_metadata in encrypted_submission.encrypted_files.items():
+            logged_state = progress_logger.get_state(file_path, file_metadata)
+            self.__log.debug("state for %s: %s", file_path, logged_state)
+
+            s3_object_id = files_to_upload[file_path]
+
+            if (logged_state is None) or not logged_state.get(
+                "upload_successful", False
+            ):
+                self.__log.info(
+                    "Uploading file: '%s' -> '%s'",
+                    str(file_path),
+                    str(s3_object_id),
+                )
+
+                try:
+                    self.upload_file(file_path, s3_object_id)
+
+                    self.__log.info(f"Upload complete for {str(file_path)}. ")
+                    progress_logger.set_state(
+                        file_path, file_metadata, state={"upload_successful": True}
+                    )
+                except Exception as e:
+                    self.__log.error("Upload failed for '%s'", str(file_path))
+
+                    progress_logger.set_state(
+                        file_path,
+                        file_metadata,
+                        state={"upload_successful": False, "error": str(e)},
+                    )
+
+                    raise e
+            else:
+                self.__log.info(
+                    "File '%s' already uploaded (at '%s')",
+                    str(file_path),
+                    str(s3_object_id),
+                )
+
+        # finally upload the metadata.json file, unconditionally:
+        try:
+            self.upload_file(metadata_file_path, metadata_s3_object_id)
+            self.__log.info(f"Upload complete for {str(metadata_file_path)}. ")
+        except Exception as e:
+            self.__log.error("Upload failed for '%s'", str(metadata_file_path))
+            raise e
+
+    def _check_for_completed_submission(self, s3_object_id: str) -> bool:
+        try:
+            return s3_object_id in self._list_keys(
+                self._config.s3_options.bucket, prefix=str(Path(s3_object_id).parent)
+            )
+        except Exception as e:
+            self.__log.warning(
+                "Exception occured during check for completed submission; assuming submission is incomplete.",
+                exc_info=e,
+            )
+            return False
+
+    # https://stackoverflow.com/a/54014862
+    def _list_keys(self, bucket_name, prefix="/", delimiter="/", start_after=""):
+        s3_paginator = self._s3_client.get_paginator("list_objects_v2")
+        prefix = prefix.lstrip(delimiter)
+        start_after = (
+            (start_after or prefix) if prefix.endswith(delimiter) else start_after
+        )
+        for page in s3_paginator.paginate(
+            Bucket=bucket_name, Prefix=prefix, StartAfter=start_after
+        ):
+            for content in page.get("Contents", ()):
+                yield content["Key"]
