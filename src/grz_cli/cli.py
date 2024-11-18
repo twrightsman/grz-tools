@@ -7,6 +7,7 @@ import logging.config
 import sys
 from os import PathLike
 from pathlib import Path
+from tempfile import NamedTemporaryFile
 
 import click
 import platformdirs
@@ -227,8 +228,6 @@ def encrypt(  # noqa: PLR0913
     """
     config = read_config(config_file)
 
-    grz_pubkey_path = config.grz_public_key_path
-
     submitter_privkey_path = config.submitter_private_key_path
     if submitter_privkey_path == "":
         submitter_privkey_path = None
@@ -246,9 +245,19 @@ def encrypt(  # noqa: PLR0913
             submission_dir / "metadata" if metadata_dir is None else metadata_dir
         ),
     )
-    worker_inst.encrypt(
-        grz_pubkey_path, submitter_private_key_path=submitter_privkey_path
-    )
+    if config.grz_public_key:
+        with NamedTemporaryFile("w") as f:
+            f.write(config.grz_public_key)
+            f.flush()
+            worker_inst.encrypt(
+                f.name,
+                submitter_private_key_path=submitter_privkey_path,
+            )
+    else:
+        worker_inst.encrypt(
+            config.grz_public_key_path,
+            submitter_private_key_path=submitter_privkey_path,
+        )
 
     log.info("Encryption successful!")
 

@@ -2,7 +2,7 @@
 grz_public_key: |2
   -----BEGIN CRYPT4GH PUBLIC KEY-----
   AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
-  -----END CRYPT4GH PUBLIC KEY----
+  -----END CRYPT4GH PUBLIC KEY-----
 
 ## Or alternatively provide the path to the crypt4gh public key of the recipient (the associated GRZ).
 # grz_public_key_path: 'path/to/public/key.pub'

@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Self
 
 from pydantic import (
     AfterValidator,
@@ -7,6 +7,8 @@ from pydantic import (
     AnyUrl,
     BaseModel,
     ConfigDict,
+    field_validator,
+    model_validator,
 )
 from pydantic.types import PathType
 
@@ -70,7 +72,12 @@ FilePath = Annotated[Path, AfterValidator(lambda v: v.expanduser()), PathType("f
 
 
 class ConfigModel(StrictBaseModel):
-    grz_public_key_path: FilePath
+    grz_public_key: str | None = None
+    """
+    The public key of the recipient (the associated GRZ).
+    """
+
+    grz_public_key_path: FilePath | None = None
     """
     Path to the crypt4gh public key of the recipient (the associated GRZ).
     """
@@ -86,3 +93,26 @@ class ConfigModel(StrictBaseModel):
     """
 
     s3_options: S3Options
+
+    @field_validator("grz_public_key")
+    @classmethod
+    def check_grz_public_key(cls, v):
+        if (
+            v is not None
+            and "BEGIN CRYPT4GH PUBLIC KEY" not in v
+            and "END CRYPT4GH PUBLIC KEY" not in v
+        ):
+            raise ValueError("Invalid public key format")
+        return v
+
+    @model_validator(mode="after")
+    def validate_grz_public_key(self) -> Self:
+        if self.grz_public_key is None and self.grz_public_key_path is None:
+            raise ValueError(
+                "Either grz_public_key or grz_public_key_path must be set."
+            )
+        if self.grz_public_key is not None and self.grz_public_key_path is not None:
+            raise ValueError(
+                "Only one of grz_public_key or grz_public_key_path must be set."
+            )
+        return self
