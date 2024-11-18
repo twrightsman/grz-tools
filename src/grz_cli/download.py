@@ -3,16 +3,21 @@
 from __future__ import annotations
 
 import logging
+import re
 from os import PathLike
 from pathlib import Path
 
 import boto3  # type: ignore[import-untyped]
+import botocore.handlers  # type: ignore[import-untyped]
 from boto3 import client as boto3_client  # type: ignore[import-untyped]
 from botocore.config import Config as Boto3Config  # type: ignore[import-untyped]
 
 from .models.config import ConfigModel
 
 log = logging.getLogger(__name__)
+
+# see discussion: https://github.com/boto/boto3/discussions/4251 to accept bucket names with ":" in the name
+botocore.handlers.VALID_BUCKET = re.compile(r"^[:a-zA-Z0-9.\-_]{1,255}$")  # type: ignore[import-untyped]
 
 
 class S3BotoDownloadWorker:
