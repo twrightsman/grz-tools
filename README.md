@@ -185,7 +185,7 @@ Download a submission from a GRZ
 Example usage:
 
 ```bash
-grz-cli download SUBMISSION_ID --submission-id foo --output-dir bar
+grz-cli download --submission-id foo --output-dir bar
 ```
 
 Option is for the usage at a GDC/GRZ.
