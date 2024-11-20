@@ -18,7 +18,7 @@ from grz_cli.parser import EncryptedSubmission, SubmissionMetadata
 
 config_path = "tests/mock_files/mock_config.yaml"
 small_file_input_path = "tests/mock_files/mock_small_input_file.bed"
-metadata_path = "tests/mock_files/example_metadata.json"
+metadata_path = "tests/mock_files/submissions/valid_submission/metadata/metadata.json"
 
 crypt4gh_grz_private_key_file = "tests/mock_files/grz_mock_private_key.sec"
 crypt4gh_grz_public_key_file = "tests/mock_files/grz_mock_public_key.pub"

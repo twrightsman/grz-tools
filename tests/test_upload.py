@@ -93,6 +93,10 @@ def test__gather_files_to_upload(encrypted_submission):
             "aaaaaaaa00000000aaaaaaaa00000000/files/aaaaaaaa00000000aaaaaaaa00000000_blood_normal.read2.fastq.gz.c4gh",
         ),
         (
+            "tests/mock_files/submissions/valid_submission/encrypted_files/aaaaaaaa00000000aaaaaaaa00000000_blood_normal.vcf.c4gh",
+            "aaaaaaaa00000000aaaaaaaa00000000/files/aaaaaaaa00000000aaaaaaaa00000000_blood_normal.vcf.c4gh",
+        ),
+        (
             "tests/mock_files/submissions/valid_submission/encrypted_files/aaaaaaaa00000000aaaaaaaa00000000_blood_tumor.read1.fastq.gz.c4gh",
             "aaaaaaaa00000000aaaaaaaa00000000/files/aaaaaaaa00000000aaaaaaaa00000000_blood_tumor.read1.fastq.gz.c4gh",
         ),
@@ -101,12 +105,20 @@ def test__gather_files_to_upload(encrypted_submission):
             "aaaaaaaa00000000aaaaaaaa00000000/files/aaaaaaaa00000000aaaaaaaa00000000_blood_tumor.read2.fastq.gz.c4gh",
         ),
         (
+            "tests/mock_files/submissions/valid_submission/encrypted_files/aaaaaaaa00000000aaaaaaaa00000000_blood_tumor.vcf.c4gh",
+            "aaaaaaaa00000000aaaaaaaa00000000/files/aaaaaaaa00000000aaaaaaaa00000000_blood_tumor.vcf.c4gh",
+        ),
+        (
             "tests/mock_files/submissions/valid_submission/encrypted_files/aaaaaaaa00000000aaaaaaaa00000002_blood_normal.read1.fastq.gz.c4gh",
             "aaaaaaaa00000000aaaaaaaa00000000/files/aaaaaaaa00000000aaaaaaaa00000002_blood_normal.read1.fastq.gz.c4gh",
         ),
         (
             "tests/mock_files/submissions/valid_submission/encrypted_files/aaaaaaaa00000000aaaaaaaa00000002_blood_normal.read2.fastq.gz.c4gh",
             "aaaaaaaa00000000aaaaaaaa00000000/files/aaaaaaaa00000000aaaaaaaa00000002_blood_normal.read2.fastq.gz.c4gh",
+        ),
+        (
+            "tests/mock_files/submissions/valid_submission/encrypted_files/aaaaaaaa00000000aaaaaaaa00000002_blood_normal.vcf.c4gh",
+            "aaaaaaaa00000000aaaaaaaa00000000/files/aaaaaaaa00000000aaaaaaaa00000002_blood_normal.vcf.c4gh",
         ),
         (
             "tests/mock_files/submissions/valid_submission/metadata/metadata.json",

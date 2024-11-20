@@ -9,10 +9,18 @@ from os import PathLike
 from pathlib import Path
 
 from .download import S3BotoDownloadWorker
+from .fastq_validation import validate_paired_end_reads, validate_single_end_reads
 from .file_operations import Crypt4GH, calculate_sha256
 from .models.config import ConfigModel
 from .models.v1_0_0.metadata import File as SubmissionFileMetadata
-from .models.v1_0_0.metadata import GrzSubmissionMetadata
+from .models.v1_0_0.metadata import (
+    FileType,
+    GrzSubmissionMetadata,
+    ReadOrder,
+    SequenceDatum,
+    SequenceType,
+    SequencingLayout,
+)
 from .upload import S3BotoUploadWorker
 
 log = logging.getLogger(__name__)
@@ -212,6 +220,55 @@ class Submission:
             )
 
             yield from errors
+
+    def validate_sequencing_data(
+        self, progress_log_file: str | PathLike
+    ) -> Generator[str]:
+        """
+        Quick-validates sequencing data linked in this submission.
+
+        :return: Generator of errors
+        """
+
+        def find_fastq_files(sequence_datum: SequenceDatum):
+            return [f for f in sequence_datum.files if f.file_type == FileType.fastq]
+
+        for donor in self.metadata.content.donors:
+            for lab_data in donor.lab_data:
+                sequence_type = lab_data.sequence_type
+                sequencing_layout = lab_data.sequencing_layout
+
+                for sequence_datum in lab_data.sequence_data:
+                    if sequence_type == SequenceType.dna:
+                        # find all FASTQ files
+                        fastq_files = find_fastq_files(sequence_datum)
+
+                        if sequencing_layout == SequencingLayout.single_end:
+                            yield from validate_single_end_reads(
+                                self.files_dir / fastq_files[0].file_path
+                            )
+                        else:
+                            # TODO: Use laneId and flowcellId to identify pairs of R1 and R2 files
+                            fastq_r1_files = [
+                                f for f in fastq_files if f.read_order == ReadOrder.r1
+                            ]
+                            fastq_r2_files = [
+                                f for f in fastq_files if f.read_order == ReadOrder.r2
+                            ]
+
+                            for fastq_r1, fastq_r2 in zip(
+                                fastq_r1_files, fastq_r2_files, strict=True
+                            ):
+                                yield from validate_paired_end_reads(
+                                    # fastq R1
+                                    self.files_dir / fastq_r1.file_path,
+                                    # fastq R2
+                                    self.files_dir / fastq_r2.file_path,
+                                )
+
+                    elif sequence_type == SequenceType.rna:
+                        # TODO: What to check here?
+                        pass
 
     def encrypt(
         self,
@@ -548,7 +605,12 @@ class Worker:
             self.__log.debug("Creating log directory...")
             self.log_dir.mkdir(mode=0o770, parents=False, exist_ok=False)
 
-        self.progress_file_checksum = self.log_dir / "progress_checksum.cjson"
+        self.progress_file_checksum_validation = (
+            self.log_dir / "progress_checksum_validation.cjson"
+        )
+        self.progress_file_sequencing_data_validation = (
+            self.log_dir / "progress_sequencing_data_validation.cjson"
+        )
         self.progress_file_encrypt = self.log_dir / "progress_encrypt.cjson"
         self.progress_file_decrypt = self.log_dir / "progress_decrypt.cjson"
         self.progress_file_upload = self.log_dir / "progress_upload.cjson"
@@ -594,10 +656,26 @@ class Worker:
 
         if force:
             # delete the log file
-            self.progress_file_checksum.unlink()
+            self.progress_file_checksum_validation.unlink()
+
         self.__log.info("Starting checksum validation...")
         if errors := list(
-            submission.validate_checksums(progress_log_file=self.progress_file_checksum)
+            submission.validate_checksums(
+                progress_log_file=self.progress_file_checksum_validation
+            )
+        ):
+            error_msg = "\n".join(["Checksum validation failed! Errors:", *errors])
+            self.__log.error(error_msg)
+
+            raise SubmissionValidationError(error_msg)
+        else:
+            self.__log.info("Checksum validation successful!")
+        self.__log.info("Starting checksum validation...")
+
+        if errors := list(
+            submission.validate_sequencing_data(
+                progress_log_file=self.progress_file_sequencing_data_validation
+            )
         ):
             error_msg = "\n".join(["Checksum validation failed! Errors:", *errors])
             self.__log.error(error_msg)

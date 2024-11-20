@@ -53,7 +53,7 @@
               "referenceGenome": "GRCh38",
               "bioinformaticsPipelineVersion": "2e70912",
               "percentBasesQ30": 95.4,
-              "meanDepthOfCoverage": 92.4,
+              "meanDepthOfCoverage": 102.4,
               "minCoverage": 25.4,
               "targetedRegionsAboveMinCoverage": 0.96,
               "readLength": 150,
@@ -83,13 +83,21 @@
                   "filePath": "aaaaaaaa00000000aaaaaaaa00000000_blood_normal.read1.fastq.gz",
                   "fileType": "fastq",
                   "fileChecksum": "7554a6de89e85fd82c6960028b31e22efd7bb70754dd2586c8462c2118084f39",
-                  "fileSizeInBytes": 165912
+                  "fileSizeInBytes": 165912,
+                  "readOrder": "R1"
                 },
                 {
                   "filePath": "aaaaaaaa00000000aaaaaaaa00000000_blood_normal.read2.fastq.gz",
                   "fileType": "fastq",
                   "fileChecksum": "9970739562e5fd86a4601b674472d7607f6645a72c1509dab596fba6affe0803",
-                  "fileSizeInBytes": 165806
+                  "fileSizeInBytes": 165806,
+                  "readOrder": "R2"
+                },
+                {
+                  "filePath": "aaaaaaaa00000000aaaaaaaa00000000_blood_normal.vcf",
+                  "fileType": "vcf",
+                  "fileChecksum": "2a0d3a06281f71ce192bf0ce8eea760e8f2fd731a2267a90614577693867b8eb",
+                  "fileSizeInBytes": 1065
                 }
               ]
             }
@@ -125,7 +133,7 @@
               "referenceGenome": "GRCh38",
               "bioinformaticsPipelineVersion": "2e70912",
               "percentBasesQ30": 95.4,
-              "meanDepthOfCoverage": 92.4,
+              "meanDepthOfCoverage": 252.4,
               "minCoverage": 25.4,
               "targetedRegionsAboveMinCoverage": 0.96,
               "readLength": 150,
@@ -155,13 +163,21 @@
                   "filePath": "aaaaaaaa00000000aaaaaaaa00000000_blood_tumor.read1.fastq.gz",
                   "fileType": "fastq",
                   "fileChecksum": "7554a6de89e85fd82c6960028b31e22efd7bb70754dd2586c8462c2118084f39",
-                  "fileSizeInBytes": 165912
+                  "fileSizeInBytes": 165912,
+                  "readOrder": "R1"
                 },
                 {
                   "filePath": "aaaaaaaa00000000aaaaaaaa00000000_blood_tumor.read2.fastq.gz",
                   "fileType": "fastq",
                   "fileChecksum": "9970739562e5fd86a4601b674472d7607f6645a72c1509dab596fba6affe0803",
-                  "fileSizeInBytes": 165806
+                  "fileSizeInBytes": 165806,
+                  "readOrder": "R2"
+                },
+                {
+                  "filePath": "aaaaaaaa00000000aaaaaaaa00000000_blood_tumor.vcf",
+                  "fileType": "vcf",
+                  "fileChecksum": "2a0d3a06281f71ce192bf0ce8eea760e8f2fd731a2267a90614577693867b8eb",
+                  "fileSizeInBytes": 1065
                 }
               ]
             }
@@ -212,7 +228,7 @@
               "referenceGenome": "GRCh38",
               "bioinformaticsPipelineVersion": "2e70912",
               "percentBasesQ30": 95.4,
-              "meanDepthOfCoverage": 92.4,
+              "meanDepthOfCoverage": 252.4,
               "minCoverage": 25.4,
               "targetedRegionsAboveMinCoverage": 0.96,
               "readLength": 150,
@@ -242,13 +258,21 @@
                   "filePath": "aaaaaaaa00000000aaaaaaaa00000002_blood_normal.read1.fastq.gz",
                   "fileType": "fastq",
                   "fileChecksum": "7554a6de89e85fd82c6960028b31e22efd7bb70754dd2586c8462c2118084f39",
-                  "fileSizeInBytes": 165912
+                  "fileSizeInBytes": 165912,
+                  "readOrder": "R1"
                 },
                 {
                   "filePath": "aaaaaaaa00000000aaaaaaaa00000002_blood_normal.read2.fastq.gz",
                   "fileType": "fastq",
                   "fileChecksum": "9970739562e5fd86a4601b674472d7607f6645a72c1509dab596fba6affe0803",
-                  "fileSizeInBytes": 165806
+                  "fileSizeInBytes": 165806,
+                  "readOrder": "R2"
+                },
+                {
+                  "filePath": "aaaaaaaa00000000aaaaaaaa00000002_blood_normal.vcf",
+                  "fileType": "vcf",
+                  "fileChecksum": "2a0d3a06281f71ce192bf0ce8eea760e8f2fd731a2267a90614577693867b8eb",
+                  "fileSizeInBytes": 1065
                 }
               ]
             }

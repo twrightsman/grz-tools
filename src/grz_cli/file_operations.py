@@ -24,11 +24,6 @@ import crypt4gh.lib  # type: ignore[import-untyped]
 from nacl.public import PrivateKey
 from tqdm.auto import tqdm
 
-# if TYPE_CHECKING:
-#     from hashlib import _Hash
-# else:
-#     _Hash = None
-
 log = logging.getLogger(__name__)
 
 

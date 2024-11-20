@@ -27,6 +27,7 @@ from pydantic import (
     ConfigDict,
     Field,
     StringConstraints,
+    model_validator,
 )
 from pydantic.alias_generators import to_camel
 
@@ -675,6 +676,86 @@ class Donor(StrictBaseModel):
     Lab data related to the donor.
     """
 
+    @model_validator(mode="after")
+    def validate_target_bed_files_exist(self):
+        """
+        Check if the submission has the required bed files for panel sequencing.
+        """
+
+        def contains_bed_files(sequence_datum: SequenceDatum) -> bool:
+            return any(f.file_type == FileType.bed for f in sequence_datum.files)
+
+        lib_type = {LibraryType.panel, LibraryType.wes}
+
+        for lab_datum in self.lab_data:
+            for sequence_datum in lab_datum.sequence_data:
+                if lab_datum.library_type in lib_type and not contains_bed_files(
+                    sequence_datum
+                ):
+                    raise ValueError(
+                        f"BED file missing for lab datum '{lab_datum.lab_data_name}' in donor '{self.case_id}'."
+                    )
+
+        return self
+
+    @model_validator(mode="after")
+    def validate_vcf_file_exists(self):
+        """
+        check if there is a VCF file
+        """
+
+        def contains_vcf_files(sequence_datum: SequenceDatum) -> bool:
+            return any(f.file_type == FileType.vcf for f in sequence_datum.files)
+
+        for lab_datum in self.lab_data:
+            for sequence_datum in lab_datum.sequence_data:
+                if not contains_vcf_files(sequence_datum):
+                    raise ValueError(
+                        f"VCF file missing for lab datum '{lab_datum.lab_data_name}' in donor '{self.case_id}'."
+                    )
+
+        return self
+
+    @model_validator(mode="after")
+    def validate_fastq_file_exists(self):
+        """
+        check if there is a FASTQ file
+        """
+
+        def get_fastq_files(sequence_datum: SequenceDatum):
+            return [f for f in sequence_datum.files if f.file_type == FileType.fastq]
+
+        for lab_datum in self.lab_data:
+            for sequence_datum in lab_datum.sequence_data:
+                fastq_files = get_fastq_files(sequence_datum)
+
+                if len(fastq_files) == 0:
+                    raise ValueError("No FASTQ file found!")
+                elif lab_datum.sequencing_layout == SequencingLayout.paired_end:
+                    # check if read order is specified
+                    for i in fastq_files:
+                        if i.read_order is None:
+                            raise ValueError(
+                                f"Error in lab datum '{lab_datum.lab_data_name}' of donor '{self.case_id}': "
+                                f"No read order specified for FASTQ file '{i.file_path}'!"
+                            )
+
+                    # check if there is an equal number of R1 and R2 files
+                    r1_fastq_files = [
+                        i for i in fastq_files if i.read_order == ReadOrder.r1
+                    ]
+                    r2_fastq_files = [
+                        i for i in fastq_files if i.read_order == ReadOrder.r2
+                    ]
+
+                    if len(r1_fastq_files) != len(r2_fastq_files):
+                        raise ValueError(
+                            f"Error in lab datum '{lab_datum.lab_data_name}' of donor '{self.case_id}': "
+                            f"Paired end sequencing layout but number of R1 FASTQ files ({len(r1_fastq_files)})"
+                            f" differs from number of R2 FASTQ files ({len(r2_fastq_files)})!"
+                        )
+        return self
+
 
 class GrzSubmissionMetadata(StrictBaseModel):
     """
@@ -687,3 +768,71 @@ class GrzSubmissionMetadata(StrictBaseModel):
     """
     List of donors including the index patient.
     """
+
+    @model_validator(mode="after")
+    def validate_donor_count(self):
+        """
+        Check whether the submission has the required number of donors based on the study type.
+        """
+        study_type = self.submission.genomic_study_type
+
+        match study_type:
+            case GenomicStudyType.single:
+                # Check if the submission has at least one donor
+                if not self.donors:
+                    raise ValueError(
+                        "At least one donor is required for a single study."
+                    )
+            case GenomicStudyType.duo:
+                # Check if the submission has at least two donors
+                if len(self.donors) < 2:
+                    raise ValueError(
+                        "At least two donors are required for a duo study."
+                    )
+            case GenomicStudyType.trio:
+                # Check if the submission has at least three donors
+                if len(self.donors) < 3:
+                    raise ValueError(
+                        "At least three donors are required for a trio study."
+                    )
+
+        return self
+
+    @model_validator(mode="after")
+    def validate_minimum_mean_coverage(self):
+        """
+        Check if the submission meets the minimum mean coverage requirements.
+        """
+        thresholds_somatic = {
+            (LibraryType.panel, SequenceSubtype.somatic): 500,
+            (LibraryType.wes, SequenceSubtype.somatic): 250,
+            (LibraryType.wes, SequenceSubtype.germline): 100,
+            (LibraryType.wgs, SequenceSubtype.somatic): 80,
+            (LibraryType.wgs, SequenceSubtype.germline): 40,
+        }
+        thresholds_rare_disease = {(LibraryType.wgs, SequenceSubtype.germline): 30}
+
+        study_subtype = self.submission.genomic_study_subtype
+        thresholds = (
+            thresholds_rare_disease
+            if study_subtype == GenomicStudySubtype.germline_only
+            else thresholds_somatic
+        )
+
+        for donor in self.donors:
+            for lab_datum in donor.lab_data:
+                for sequence_datum in lab_datum.sequence_data:
+                    threshold = thresholds.get(
+                        (lab_datum.library_type, lab_datum.sequence_subtype)
+                    )
+                    if not threshold:
+                        raise ValueError(
+                            f"Threshold for {lab_datum.library_type} {lab_datum.sequence_subtype} not found."
+                        )
+                    if sequence_datum.mean_depth_of_coverage < threshold:
+                        raise ValueError(
+                            f"Mean depth of coverage for donor '{donor.case_id}', lab datum '{lab_datum.lab_data_name}' "
+                            f"below threshold ({threshold}): {sequence_datum.mean_depth_of_coverage}"
+                        )
+
+        return self

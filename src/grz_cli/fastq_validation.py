@@ -29,9 +29,11 @@ def open_fastq(file_path: str | PathLike):
     """
     if is_gzipped(file_path):
         with gzip.open(file_path, "rb") as f:
+            # Open gzipped FASTQ
             yield f
     else:
         with open(file_path) as f:
+            # Open regular FASTQ
             yield f
 
 
@@ -87,7 +89,7 @@ def validate_fastq_file(fastq_file: str | PathLike) -> tuple[int, set[int], list
     else:
         log.debug("%s: read length: %s", fastq_file, next(iter(read_lengths)))
 
-    return (num_lines, read_lengths, errors)
+    return num_lines, read_lengths, errors
 
 
 def validate_single_end_reads(fastq_file: str | PathLike) -> Generator[str]:
