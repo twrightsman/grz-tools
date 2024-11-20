@@ -42,8 +42,8 @@ The current version of the tool requires the `working_dir` to have at least as m
 - **Validation**: Validate file checksums, basic file metadata and BfArM requirements.
 - **Encryption**: Encrypt files using `crypt4gh`.
 - **Decryption**: Encrypt files using `crypt4gh`.
-- **Upload**: Upload encrypted files directly to a GRZ either (via built-in `boto3` or external `s3cmd`).
-- **Download**: Download encrypted files from a GRZ.
+- **Upload**: Upload encrypted files directly to a GRZ either (via built-in `boto3`).
+- **Download**: Download encrypted files from a GRZ (via built-in `boto3`).
 - **Logging**: Log progress and results of operations
 
 ## Installation
