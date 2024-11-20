@@ -14,6 +14,10 @@ from botocore.config import Config as Boto3Config  # type: ignore[import-untyped
 
 from .models.config import ConfigModel
 
+MULTIPART_THRESHOLD = 8 * 1024 * 1024  # 8MiB, boto3 default
+MULTIPART_CHUNKSIZE = 8 * 1024 * 1024  # 8MiB, boto3 default
+MULTIPART_MAX_CHUNKS = 1000  # CEPH S3 limit, AWS limit is 10000
+
 log = logging.getLogger(__name__)
 
 # see discussion: https://github.com/boto/boto3/discussions/4251 to accept bucket names with ":" in the name
@@ -48,7 +52,6 @@ class S3BotoDownloadWorker:
                 return string
 
         # configure proxies if proxy_url is defined
-        print(self._config.s3_options)
         proxy_url = empty_str_to_none(self._config.s3_options.proxy_url)
         if proxy_url is not None:
             config = Boto3Config(proxies={"http": proxy_url, "https": proxy_url})
@@ -68,24 +71,24 @@ class S3BotoDownloadWorker:
             config=config,
         )
 
-    def prepare_download(self, metadata_dir: Path) -> Path:
+    def prepare_download(
+        self,
+        metadata_dir: Path,
+        files_dir: Path,
+        encrypted_files_dir: Path,
+        log_dir: Path,
+    ):
         """
         Prepare the download of an encrypted submission
 
         :param metadata_dir: Path to the metadata directory
-        :param encrypted_files_dir: Path to the directory where the encrypted files will be stored
+        :param files_dir: Path to the files directory
+        :param encrypted_files_dir: Path to the encrypted_files directory
+        :param log_dir: Path to the logs directory
         """
-        parent_dir = metadata_dir.parent
-
-        # Create the metadata/ and files/ directories within the new submission directory
-        metadata_dir_path = parent_dir / "metadata"
-        files_dir_path = parent_dir / "files"
-
-        for dir_path in [metadata_dir_path, files_dir_path]:
+        for dir_path in [metadata_dir, files_dir, encrypted_files_dir, log_dir]:
             if not dir_path.exists():
-                dir_path.mkdir(parents=True, exist_ok=True)  # Create the directories
-
-        return parent_dir
+                dir_path.mkdir(parents=False, exist_ok=False)  # Create the directories
 
     def download(
         self,
@@ -121,8 +124,10 @@ class S3BotoDownloadWorker:
                     continue
                 else:
                     file_key = file["Key"]
-                    file_name = Path(file_key).name
-                    file_path = encrypted_files_dir / file_name
+                    file_path = Path(file_key).relative_to(f"{submission_id}/files")
+                    print(file_path)
+                    file_path = encrypted_files_dir / file_path
+                    file_path.parent.mkdir(mode=0o770, parents=True, exist_ok=True)
                     self.download_file(file_key, file_path)
 
     def download_file(self, s3_object_id: str, local_file_path: PathLike | str):

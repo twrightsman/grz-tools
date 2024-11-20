@@ -5,7 +5,7 @@ CLI module for handling command-line interface operations.
 import logging
 import logging.config
 import sys
-from os import PathLike
+from os import PathLike, sched_getaffinity
 from pathlib import Path
 from tempfile import NamedTemporaryFile
 
@@ -53,81 +53,45 @@ FILE_R_E = click.Path(
 )
 
 submission_dir = click.option(
-    "-s",
     "--submission-dir",
     metavar="PATH",
     type=DIR_R_E,
     required=True,
-    help="Path to the submission directory containing both 'metadata/' and 'files/' directories",
-)
-
-
-metadata_dir = click.option(
-    "-m",
-    "--metadata-dir",
-    metavar="PATH",
-    type=DIR_RW_C,
-    required=False,
-    default=None,
-    help="Path to the metadata directory containing the metadata.json file",
-)
-
-files_dir = click.option(
-    "-f",
-    "--files-dir",
-    metavar="PATH",
-    type=DIR_RW_C,
-    required=False,
-    default=None,
-    help="Path to the files linked in the submission",
-)
-
-working_dir = click.option(
-    "-w",
-    "--working-dir",
-    metavar="PATH",
-    type=DIR_RW_E,
-    required=False,
-    default=None,
-    callback=lambda c, p, v: v or c.params.get("submission_dir"),
-    help="Path to a working directory where intermediate files can be stored",
+    help="Path to the submission directory containing 'metadata/', 'files/', 'encrypted_files/' and 'logs/' directories",
 )
 
 config_file = click.option(
-    "-c",
     "--config-file",
     metavar="STRING",
     type=FILE_R_E,
-    required=True,
+    required=False,
     default=DEFAULT_CONFIG_PATH,
     help="Path to config file",
 )
 
-encrypted_files_dir = click.option(
-    "-o",
-    "--encrypted-files-dir",
-    metavar="PATH",
-    type=DIR_RW_C,
-    required=False,
-    default=None,
-    help="Path to a directory where the encrypted files can be stored",
-)
-
-decrypted_files_dir = click.option(
-    "-o",
-    "--decrypted-files-dir",
-    metavar="STRING",
-    type=DIR_RW_C,
-    required=False,
-    default=None,
-    help="Path to a directory where the decrypted files can be stored",
-)
-
 threads = click.option(
     "--threads",
-    default=None,
+    default=min(len(sched_getaffinity(0)), 4),
     type=int,
+    show_default=True,
     help="Number of threads to use for parallel operations",
+)
+
+submission_id = click.option(
+    "--submission-id",
+    required=True,
+    type=str,
+    metavar="STRING",
+    help="S3 submission prefix (corresponds to the tanG of a submission)",
+)
+
+output_dir = click.option(
+    "--output-dir",
+    metavar="PATH",
+    type=DIR_RW_E,
+    required=True,
+    default=None,
+    help="Path to the target submission output directory",
 )
 
 
@@ -180,28 +144,22 @@ def cli(log_file: str | None = None, log_level: str = "INFO"):
 
 @cli.command()
 @submission_dir
-@metadata_dir
-@files_dir
-@working_dir
-def validate(
-    submission_dir: str,
-    metadata_dir: str,
-    files_dir: str,
-    working_dir: str,
-):
+def validate(submission_dir):
     """
-    Validates the sha256 checksum of the sequence data files. This command must be executed
-    before the encryption and upload can start.
+    Validate the submission.
+
+    This validates the submission by checking its checksums, as well as performing basic sanity checks on the supplied metadata.
+    Must be executed before calling `encrypt` and `upload`.
     """
     log.info("Starting validation...")
 
-    working_dir_path: Path = Path(working_dir)
-    submission_dir_path: Path = Path(submission_dir)
+    submission_dir = Path(submission_dir)
 
     worker_inst = Worker(
-        working_dir=working_dir_path,
-        files_dir=submission_dir_path / "files" if files_dir is None else files_dir,
-        metadata_dir=(metadata_dir or submission_dir_path / "metadata"),
+        metadata_dir=submission_dir / "metadata",
+        files_dir=submission_dir / "files",
+        log_dir=submission_dir / "logs",
+        encrypted_files_dir=submission_dir / "encrypted_files",
     )
     worker_inst.validate()
 
@@ -210,21 +168,16 @@ def validate(
 
 @cli.command()
 @submission_dir
-@metadata_dir
-@files_dir
-@working_dir
-@encrypted_files_dir
 @config_file
-def encrypt(  # noqa: PLR0913
+def encrypt(
     submission_dir,
-    working_dir,
-    metadata_dir,
-    files_dir,
-    encrypted_files_dir,
     config_file,
 ):
     """
-    Encrypt a submission using the GRZ public key.
+    Encrypt a submission.
+
+    Encryption is done with the recipient's public key.
+    Sub-folders 'encrypted_files' and 'logs' are created within the submission directory.
     """
     config = read_config(config_file)
 
@@ -234,16 +187,13 @@ def encrypt(  # noqa: PLR0913
 
     log.info("Starting encryption...")
 
-    working_dir = Path(working_dir)
     submission_dir = Path(submission_dir)
 
     worker_inst = Worker(
-        working_dir=working_dir,
-        encrypted_files_dir=encrypted_files_dir,
-        files_dir=submission_dir / "files" if files_dir is None else files_dir,
-        metadata_dir=(
-            submission_dir / "metadata" if metadata_dir is None else metadata_dir
-        ),
+        metadata_dir=submission_dir / "metadata",
+        files_dir=submission_dir / "files",
+        log_dir=submission_dir / "logs",
+        encrypted_files_dir=submission_dir / "encrypted_files",
     )
     if config.grz_public_key:
         with NamedTemporaryFile("w") as f:
@@ -264,21 +214,15 @@ def encrypt(  # noqa: PLR0913
 
 @cli.command()
 @submission_dir
-@metadata_dir
-@encrypted_files_dir
-@working_dir
-@decrypted_files_dir
 @config_file
-def decrypt(  # noqa: PLR0913
-    submission_dir: str,
-    metadata_dir: str,
-    encrypted_files_dir: str,
-    working_dir: str,
-    decrypted_files_dir: str,
-    config_file: str,
+def decrypt(
+    submission_dir,
+    config_file,
 ):
     """
-    Decrypt a submission using the GRZ private key.
+    Decrypt a submission.
+
+    Decrypting a submission requires the _private_ key of the original recipient.
     """
     config = read_config(config_file)
 
@@ -289,22 +233,13 @@ def decrypt(  # noqa: PLR0913
 
     log.info("Starting encryption...")
 
-    working_dir_path: Path = Path(working_dir)
-    submission_dir_path: Path = Path(submission_dir)
+    submission_dir = Path(submission_dir)
 
     worker_inst = Worker(
-        working_dir=working_dir_path,
-        files_dir=(
-            working_dir_path / "files"
-            if decrypted_files_dir is None
-            else decrypted_files_dir
-        ),
-        metadata_dir=(metadata_dir or submission_dir_path / "metadata"),
-        encrypted_files_dir=(
-            submission_dir_path / "encrypted_files"
-            if encrypted_files_dir is None
-            else encrypted_files_dir
-        ),
+        metadata_dir=submission_dir / "metadata",
+        files_dir=submission_dir / "files",
+        log_dir=submission_dir / "logs",
+        encrypted_files_dir=submission_dir / "encrypted_files",
     )
     worker_inst.decrypt(grz_privkey_path)
 
@@ -313,37 +248,27 @@ def decrypt(  # noqa: PLR0913
 
 @cli.command()
 @submission_dir
-@metadata_dir
-@encrypted_files_dir
-@working_dir
 @config_file
 @threads
-def upload(  # noqa: PLR0913
+def upload(
     submission_dir,
-    metadata_dir,
-    encrypted_files_dir,
-    working_dir,
     config_file,
     threads,
 ):
     """
-    Upload a submission to a GRZ/GDC using the provided configuration.
+    Upload a submission to a GRZ/GDC.
     """
     config = read_config(config_file)
 
     log.info("Starting upload...")
-    working_dir_path = Path(working_dir)
-    submission_dir_path = Path(submission_dir)
+
+    submission_dir = Path(submission_dir)
 
     worker_inst = Worker(
-        working_dir=working_dir_path,
-        metadata_dir=(metadata_dir or submission_dir_path / "metadata"),
-        encrypted_files_dir=(
-            submission_dir_path / "encrypted_files"
-            if encrypted_files_dir is None
-            else encrypted_files_dir
-        ),
-        threads=threads,
+        metadata_dir=submission_dir / "metadata",
+        files_dir=submission_dir / "files",
+        log_dir=submission_dir / "logs",
+        encrypted_files_dir=submission_dir / "encrypted_files",
     )
     worker_inst.upload(config)
 
@@ -351,40 +276,33 @@ def upload(  # noqa: PLR0913
 
 
 @cli.command()
-@click.argument("submission_id", type=str)
-@submission_dir
-@metadata_dir
-@encrypted_files_dir
+@submission_id
+@output_dir
 @config_file
 def download(
     submission_id,
-    submission_dir,
-    metadata_dir,
-    encrypted_files_dir,
+    output_dir,
     config_file,
 ):
     """
-    Download a submission file from s3 using the provided configuration.
+    Download a submission from a GRZ.
 
-    The SUBMISSION_ID is the same as the value of `tanG` in the metadata.json.
+    A local submission directory is created as a sub-directory of `output-dir`, with a name based on the supplied submission-id. Downloaded files are stored within the `encrypted_files` sub-folder of this submission directory.
     """
     config = read_config(config_file)
 
     log.info("Starting download...")
 
-    submission_dir_path = Path(submission_dir)
+    submission_dir_path = Path(output_dir) / submission_id
+    if not submission_dir_path.is_dir():
+        log.debug("Creating submission directory %s", submission_dir_path)
+        submission_dir_path.mkdir(mode=0o770, parents=False, exist_ok=False)
 
     worker_inst = Worker(
-        metadata_dir=(
-            submission_dir_path / submission_id / "metadata"
-            if metadata_dir is None
-            else metadata_dir
-        ),
-        encrypted_files_dir=(
-            submission_dir_path / submission_id / "files"
-            if encrypted_files_dir is None
-            else encrypted_files_dir
-        ),
+        metadata_dir=submission_dir_path / "metadata",
+        files_dir=submission_dir_path / "files",
+        log_dir=submission_dir_path / "logs",
+        encrypted_files_dir=submission_dir_path / "encrypted_files",
     )
     worker_inst.download(config)
 

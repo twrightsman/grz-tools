@@ -62,7 +62,7 @@ lint = [
     "mypy",
     "types-pyyaml",
     "types-tqdm",
-    "pydantic"
+    "pydantic",
 ]
 
 [tool.ruff]

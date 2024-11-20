@@ -485,6 +485,10 @@ class EncryptedSubmission:
             self.__log.debug("state for %s: %s", encrypted_file_path, logged_state)
 
             decrypted_file_path = files_dir / file_metadata.file_path
+            if not decrypted_file_path.parent.is_dir():
+                decrypted_file_path.parent.mkdir(
+                    mode=0o770, parents=True, exist_ok=False
+                )
 
             if (
                 (logged_state is None)
@@ -548,56 +552,43 @@ class Worker:
 
     __log = log.getChild("Worker")
 
-    def __init__(  # noqa: PLR0913
+    def __init__(
         self,
-        working_dir: str | PathLike | None = None,
-        metadata_dir: str | PathLike | None = None,
-        files_dir: str | PathLike | None = None,
-        encrypted_files_dir: str | PathLike | None = None,
-        log_dir: str | PathLike | None = None,
-        threads: int | None = None,
+        metadata_dir: str | PathLike,
+        files_dir: str | PathLike,
+        log_dir: str | PathLike,
+        encrypted_files_dir: str | PathLike,
+        threads: int = 1,
     ):
         """
         Initialize the worker object.
 
-        :param working_dir: Path to the working directory
         :param metadata_dir: Path to the metadata directory
         :param files_dir: Path to the files directory
-        :param encrypted_files_dir: Path to the encrypted files directory
         :param log_dir: Path to the log directory
+        :param encrypted_files_dir: Path to the encrypted files directory
         :param threads: Number of threads to use
         """
-        self.working_dir = Path(working_dir) if working_dir is not None else Path.cwd()
         self._threads = threads
-
-        self.__log.debug("Working directory: %s", self.working_dir)
+        self.__log.debug("Threads: %s", self._threads)
 
         # metadata dir
-        self.metadata_dir = (
-            Path(metadata_dir)
-            if metadata_dir is not None
-            else self.working_dir / "metadata"
-        )
+        self.metadata_dir = Path(metadata_dir)
         self.__log.debug("Metadata directory: %s", self.metadata_dir)
 
         # files dir
-        self.files_dir = (
-            Path(files_dir) if files_dir is not None else self.working_dir / "files"
-        )
+        self.files_dir = Path(files_dir)
         self.__log.debug("Files directory: %s", self.files_dir)
 
         # encrypted files dir
         self.encrypted_files_dir = (
-            Path(encrypted_files_dir)
-            if encrypted_files_dir is not None
-            else self.working_dir / "encrypted_files"
+            Path(encrypted_files_dir) if encrypted_files_dir is not None else Path()
         )
+
         self.__log.info("Encrypted files directory: %s", self.encrypted_files_dir)
 
         # log dir
-        self.log_dir = (
-            Path(log_dir) if log_dir is not None else self.working_dir / "logs"
-        )
+        self.log_dir = Path(log_dir)
         self.__log.info("Log directory: %s", self.log_dir)
 
         # create log dir if non-existent
@@ -632,7 +623,7 @@ class Worker:
         """
         encrypted_submission = EncryptedSubmission(
             metadata_dir=self.metadata_dir,
-            encrypted_files_dir=self.encrypted_files_dir,
+            encrypted_files_dir=str(self.encrypted_files_dir),
         )
         return encrypted_submission
 
@@ -706,7 +697,7 @@ class Worker:
             self.progress_file_encrypt.unlink()
 
         encrypted_submission = submission.encrypt(
-            encrypted_files_dir=self.encrypted_files_dir,
+            encrypted_files_dir=str(self.encrypted_files_dir),
             progress_log_file=self.progress_file_encrypt,
             recipient_public_key_path=recipient_public_key_path,
             submitter_private_key_path=submitter_private_key_path,
@@ -761,7 +752,10 @@ class Worker:
         )
 
         submission_id = self.metadata_dir.parent.name
-        submission_dir = download_worker.prepare_download(self.metadata_dir)
+        submission_dir = self.metadata_dir.parent
+        download_worker.prepare_download(
+            self.metadata_dir, self.files_dir, self.encrypted_files_dir, self.log_dir
+        )
 
         log.info("Prepared submission directory: %s", submission_dir)
 

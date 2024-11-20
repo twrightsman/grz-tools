@@ -1,5 +1,6 @@
 """Tests for the command line interface."""
 
+import shutil
 from pathlib import Path
 from unittest import mock
 
@@ -23,12 +24,22 @@ def working_dir_path(working_dir) -> Path:
     return Path(working_dir.strpath)
 
 
-def test_validate_submission(working_dir_path, temp_config_file_path):
+def test_validate_submission(
+    working_dir_path,
+    temp_config_file_path,
+):
+    submission_dir = Path("tests/mock_files/submissions/valid_submission")
+
+    shutil.copytree(
+        submission_dir / "files", working_dir_path / "files", dirs_exist_ok=True
+    )
+    shutil.copytree(
+        submission_dir / "metadata", working_dir_path / "metadata", dirs_exist_ok=True
+    )
+
     testargs = [
         "validate",
         "--submission-dir",
-        "tests/mock_files/submissions/valid_submission/",
-        "--working-dir",
         str(working_dir_path),
     ]
 
@@ -51,12 +62,19 @@ def test_encrypt_decrypt_submission(
     # crypt4gh_grz_private_key_file_path,
     tmpdir_factory: pytest.TempdirFactory,
 ):
+    submission_dir = Path("tests/mock_files/submissions/valid_submission")
+
+    shutil.copytree(
+        submission_dir / "files", working_dir_path / "files", dirs_exist_ok=True
+    )
+    shutil.copytree(
+        submission_dir / "metadata", working_dir_path / "metadata", dirs_exist_ok=True
+    )
+
     # first, encrypt the data
     testargs = [
         "encrypt",
         "--submission-dir",
-        "tests/mock_files/submissions/valid_submission/",
-        "--working-dir",
         str(working_dir_path),
         "--config-file",
         temp_config_file_path,
@@ -71,13 +89,7 @@ def test_encrypt_decrypt_submission(
     testargs = [
         "decrypt",
         "--submission-dir",
-        "tests/mock_files/submissions/valid_submission/",
-        "--working-dir",
         str(working_dir_path),
-        "--decrypted-files-dir",
-        str(working_dir_path / "files"),
-        "--encrypted-files-dir",
-        str(working_dir_path / "encrypted_files"),
         "--config-file",
         temp_config_file_path,
     ]
@@ -96,20 +108,27 @@ def test_encrypt_decrypt_submission(
         "aaaaaaaa00000000aaaaaaaa00000002_blood_normal.read1.fastq.gz",
         "aaaaaaaa00000000aaaaaaaa00000002_blood_normal.read2.fastq.gz",
     ]:
-        expected_checksum = calculate_sha256(
-            Path("tests/mock_files/submissions/valid_submission/files") / file
-        )
+        expected_checksum = calculate_sha256(submission_dir / "files" / file)
         observed_checksum = calculate_sha256(working_dir_path / "files" / file)
 
         assert expected_checksum == observed_checksum
 
 
 def test_decrypt_submission(working_dir_path, temp_config_file_path):
+    submission_dir = Path("tests/mock_files/submissions/valid_submission")
+
+    shutil.copytree(
+        submission_dir / "encrypted_files",
+        working_dir_path / "encrypted_files",
+        dirs_exist_ok=True,
+    )
+    shutil.copytree(
+        submission_dir / "metadata", working_dir_path / "metadata", dirs_exist_ok=True
+    )
+
     testargs = [
         "decrypt",
         "--submission-dir",
-        "tests/mock_files/submissions/valid_submission/",
-        "--working-dir",
         str(working_dir_path),
         "--config-file",
         temp_config_file_path,
@@ -128,9 +147,7 @@ def test_decrypt_submission(working_dir_path, temp_config_file_path):
         "aaaaaaaa00000000aaaaaaaa00000002_blood_normal.read1.fastq.gz",
         "aaaaaaaa00000000aaaaaaaa00000002_blood_normal.read2.fastq.gz",
     ]:
-        expected_checksum = calculate_sha256(
-            Path("tests/mock_files/submissions/valid_submission/files") / file
-        )
+        expected_checksum = calculate_sha256(submission_dir / "files" / file)
         observed_checksum = calculate_sha256(working_dir_path / "files" / file)
 
         assert expected_checksum == observed_checksum
@@ -138,11 +155,18 @@ def test_decrypt_submission(working_dir_path, temp_config_file_path):
 
 @mock_aws
 def test_upload_submission(working_dir_path, temp_config_file_path, remote_bucket):
+    submission_dir = Path("tests/mock_files/submissions/valid_submission")
+
+    shutil.copytree(
+        submission_dir / "files", working_dir_path / "files", dirs_exist_ok=True
+    )
+    shutil.copytree(
+        submission_dir / "metadata", working_dir_path / "metadata", dirs_exist_ok=True
+    )
+
     testargs = [
         "upload",
         "--submission-dir",
-        "tests/mock_files/submissions/valid_submission/",
-        "--working-dir",
         str(working_dir_path),
         "--config-file",
         temp_config_file_path,
