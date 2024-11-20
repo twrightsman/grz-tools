@@ -12,6 +12,8 @@ authors = [
     { name = "Koray Kirli", email = "koraykirli@gmail.com" },
     { name = "Mathias Lesche", email = "mathias.lesche@tu-dresden.de" },
     { name = "Florian R. Hölzlwimmer", email = "git.ich@frhoelzlwimmer.de" },
+    { name = "Till Hartmann", email = "till.hartmann@bih-charite.de" },
+    { name = "Thomas Sell", email = "thomas.sell@bih-charite.de" },
 ]
 dependencies = [
     "boto3 ~=1.35.39",
