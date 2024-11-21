@@ -47,8 +47,7 @@
           "enrichmentKitDescription": "TruSeq RNA Access Library Prep Kit v2.0",
           "barcode": "ATCACG",
           "sequencingLayout": "paired-end",
-          "sequenceData": [
-            {
+          "sequenceData": {
               "bioinformaticsPipelineName": "In-House Pipeline",
               "referenceGenome": "GRCh38",
               "bioinformaticsPipelineVersion": "2e70912",
@@ -86,8 +85,7 @@
                   "fileSizeInBytes": 116993
                 }
               ]
-            }
-          ],
+            },
           "sampleDate": "1970-01-01"
         },
         {
@@ -113,8 +111,7 @@
           "enrichmentKitDescription": "TruSeq RNA Access Library Prep Kit v2.0",
           "barcode": "GGTACTA",
           "sequencingLayout": "paired-end",
-          "sequenceData": [
-            {
+          "sequenceData":{
               "bioinformaticsPipelineName": "In-House Pipeline",
               "referenceGenome": "GRCh38",
               "bioinformaticsPipelineVersion": "2e70912",
@@ -152,8 +149,7 @@
                   "fileSizeInBytes": 116642
                 }
               ]
-            }
-          ],
+            },
           "sampleDate": "1970-01-01"
         }
       ]
@@ -194,8 +190,7 @@
           "enrichmentKitDescription": "TruSeq RNA Access Library Prep Kit v2.0",
           "barcode": "TTGACA",
           "sequencingLayout": "paired-end",
-          "sequenceData": [
-            {
+          "sequenceData": {
               "bioinformaticsPipelineName": "In-House Pipeline",
               "referenceGenome": "GRCh38",
               "bioinformaticsPipelineVersion": "2e70912",
@@ -233,8 +228,7 @@
                   "fileSizeInBytes": 116314
                 }
               ]
-            }
-          ],
+            },
           "sampleDate": "1970-01-01"
         }
       ]

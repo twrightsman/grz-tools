@@ -17,7 +17,7 @@ from .models.v1_0_0.metadata import (
     FileType,
     GrzSubmissionMetadata,
     ReadOrder,
-    SequenceDatum,
+    SequenceData,
     SequenceType,
     SequencingLayout,
 )
@@ -84,15 +84,14 @@ class SubmissionMetadata:
         submission_files = {}
         for donor in self.content.donors:
             for lab_data in donor.lab_data:
-                for sequence_data in lab_data.sequence_data:
-                    for file_data in sequence_data.files:
-                        file_path = Path(file_data.file_path)
-                        if file_path.is_symlink():
-                            raise ValueError(
-                                f"Provided path is a symlink which is not accepted: {file_path}"
-                            )
-                        else:
-                            submission_files[file_path] = file_data
+                for file_data in lab_data.sequence_data.files:
+                    file_path = Path(file_data.file_path)
+                    if file_path.is_symlink():
+                        raise ValueError(
+                            f"Provided path is a symlink which is not accepted: {file_path}"
+                        )
+                    else:
+                        submission_files[file_path] = file_data
 
         self._files = submission_files
         return self._files
@@ -106,22 +105,21 @@ class SubmissionMetadata:
         submission_files: dict[str | PathLike, SubmissionFileMetadata] = {}
         for donor in self.content.donors:
             for lab_data in donor.lab_data:
-                for sequence_data in lab_data.sequence_data:
-                    for file_data in sequence_data.files:
-                        # check if file is already registered
-                        file_path = Path(file_data.file_path)
-                        if other_metadata := submission_files.get(file_path):
-                            # check if metadata matches
-                            if file_data != other_metadata:
-                                yield f"{file_data.file_path}: Different metadata for the same path observed!"
+                for file_data in lab_data.sequence_data.files:
+                    # check if file is already registered
+                    file_path = Path(file_data.file_path)
+                    if other_metadata := submission_files.get(file_path):
+                        # check if metadata matches
+                        if file_data != other_metadata:
+                            yield f"{file_data.file_path}: Different metadata for the same path observed!"
 
-                            # check if FASTQ data was already linked in another submission
-                            if file_data.file_type == "fastq":
-                                yield f"{file_data.file_path}: FASTQ file already linked in another submission!"
-                            if file_data.file_type == "bam":
-                                yield f"{file_data.file_path}: BAM file already linked in another submission!"
-                        else:
-                            submission_files[file_path] = file_data
+                        # check if FASTQ data was already linked in another submission
+                        if file_data.file_type == "fastq":
+                            yield f"{file_data.file_path}: FASTQ file already linked in another submission!"
+                        if file_data.file_type == "bam":
+                            yield f"{file_data.file_path}: BAM file already linked in another submission!"
+                    else:
+                        submission_files[file_path] = file_data
 
     @property
     def checksum(self) -> str:
@@ -230,45 +228,44 @@ class Submission:
         :return: Generator of errors
         """
 
-        def find_fastq_files(sequence_datum: SequenceDatum):
-            return [f for f in sequence_datum.files if f.file_type == FileType.fastq]
+        def find_fastq_files(sequence_data: SequenceData):
+            return [f for f in sequence_data.files if f.file_type == FileType.fastq]
 
         for donor in self.metadata.content.donors:
             for lab_data in donor.lab_data:
                 sequence_type = lab_data.sequence_type
                 sequencing_layout = lab_data.sequencing_layout
+                sequence_data = lab_data.sequence_data
+                if sequence_type == SequenceType.dna:
+                    # find all FASTQ files
+                    fastq_files = find_fastq_files(sequence_data)
 
-                for sequence_datum in lab_data.sequence_data:
-                    if sequence_type == SequenceType.dna:
-                        # find all FASTQ files
-                        fastq_files = find_fastq_files(sequence_datum)
+                    if sequencing_layout == SequencingLayout.single_end:
+                        yield from validate_single_end_reads(
+                            self.files_dir / fastq_files[0].file_path
+                        )
+                    else:
+                        # TODO: Use laneId and flowcellId to identify pairs of R1 and R2 files
+                        fastq_r1_files = [
+                            f for f in fastq_files if f.read_order == ReadOrder.r1
+                        ]
+                        fastq_r2_files = [
+                            f for f in fastq_files if f.read_order == ReadOrder.r2
+                        ]
 
-                        if sequencing_layout == SequencingLayout.single_end:
-                            yield from validate_single_end_reads(
-                                self.files_dir / fastq_files[0].file_path
+                        for fastq_r1, fastq_r2 in zip(
+                            fastq_r1_files, fastq_r2_files, strict=True
+                        ):
+                            yield from validate_paired_end_reads(
+                                # fastq R1
+                                self.files_dir / fastq_r1.file_path,
+                                # fastq R2
+                                self.files_dir / fastq_r2.file_path,
                             )
-                        else:
-                            # TODO: Use laneId and flowcellId to identify pairs of R1 and R2 files
-                            fastq_r1_files = [
-                                f for f in fastq_files if f.read_order == ReadOrder.r1
-                            ]
-                            fastq_r2_files = [
-                                f for f in fastq_files if f.read_order == ReadOrder.r2
-                            ]
 
-                            for fastq_r1, fastq_r2 in zip(
-                                fastq_r1_files, fastq_r2_files, strict=True
-                            ):
-                                yield from validate_paired_end_reads(
-                                    # fastq R1
-                                    self.files_dir / fastq_r1.file_path,
-                                    # fastq R2
-                                    self.files_dir / fastq_r2.file_path,
-                                )
-
-                    elif sequence_type == SequenceType.rna:
-                        # TODO: What to check here?
-                        pass
+                elif sequence_type == SequenceType.rna:
+                    # TODO: What to check here?
+                    pass
 
     def encrypt(
         self,
