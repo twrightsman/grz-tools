@@ -29,7 +29,7 @@ def upload_file(remote_bucket, local_file_path, s3_key):
 
 @mock_aws
 def test_boto_download(
-    config_model_without_endpoint_url,
+    config_model,
     remote_bucket,
     temp_small_file_path,
     temp_small_file_sha256sum,
@@ -55,19 +55,17 @@ def test_boto_download(
 
     # Create a mock S3 bucket
     download_worker = S3BotoDownloadWorker(
-        config=config_model_without_endpoint_url,
+        config=config_model,
         status_file_path=temp_download_log_file_path,
     )
 
     # Execute download
-    download_worker.download_file(
-        s3_object_id=f"{submission_id}/large_test_file.fastq",
-        local_file_path=files_dir / "large_test_file.fastq",
-    )
-    download_worker.download_file(
-        s3_object_id=f"{submission_id}/small_test_file.txt",
-        local_file_path=files_dir / "small_test_file.txt",
-    )
+    local_file_path = files_dir / "large_test_file.fastq"
+    s3_object_id = f"{submission_id}/large_test_file.fastq"
+    download_worker.download_file(local_file_path, s3_object_id, 100000)
+    local_file_path = files_dir / "small_test_file.txt"
+    s3_object_id = f"{submission_id}/small_test_file.txt"
+    download_worker.download_file(local_file_path, s3_object_id, 100000)
 
     # Assert that the files have been downloaded correctly
     assert (

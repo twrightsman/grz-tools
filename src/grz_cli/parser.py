@@ -746,26 +746,26 @@ class Worker:
 
         upload_worker.upload(encrypted_submission)
 
-    def download(self, config: ConfigModel):
+    def download(self, config: ConfigModel, submission_id: str):
         """
         Download an encrypted submission
-
         """
         download_worker = S3BotoDownloadWorker(
             config, status_file_path=self.progress_file_upload
         )
 
-        submission_id = self.metadata_dir.parent.name
-        submission_dir = self.metadata_dir.parent
+        self.__log.info("Preparing output directories...")
         download_worker.prepare_download(
-            self.metadata_dir, self.files_dir, self.encrypted_files_dir, self.log_dir
+            self.metadata_dir, self.encrypted_files_dir, self.log_dir
         )
 
-        log.info("Prepared submission directory: %s", submission_dir)
+        self.__log.info("Downloading metadata...")
+        download_worker.download_metadata(
+            submission_id, self.metadata_dir, metadata_file_name="metadata.json"
+        )
 
+        self.__log.info("Downloading encrypted files...")
         download_worker.download(
             submission_id,
-            self.metadata_dir,
-            self.encrypted_files_dir,
-            metadata_file_name="metadata.json",
+            EncryptedSubmission(self.metadata_dir, self.encrypted_files_dir),
         )

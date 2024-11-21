@@ -269,6 +269,7 @@ def upload(
         files_dir=submission_dir / "files",
         log_dir=submission_dir / "logs",
         encrypted_files_dir=submission_dir / "encrypted_files",
+        threads=threads,
     )
     worker_inst.upload(config)
 
@@ -279,21 +280,24 @@ def upload(
 @submission_id
 @output_dir
 @config_file
+@threads
 def download(
     submission_id,
     output_dir,
     config_file,
+    threads,
 ):
     """
     Download a submission from a GRZ.
 
-    A local submission directory is created as a sub-directory of `output-dir`, with a name based on the supplied submission-id. Downloaded files are stored within the `encrypted_files` sub-folder of this submission directory.
+    Downloaded metadata is stored within the `metadata` sub-folder of the submission output directory.
+    Downloaded files are stored within the `encrypted_files` sub-folder of the submission output directory.
     """
     config = read_config(config_file)
 
     log.info("Starting download...")
 
-    submission_dir_path = Path(output_dir) / submission_id
+    submission_dir_path = Path(output_dir)
     if not submission_dir_path.is_dir():
         log.debug("Creating submission directory %s", submission_dir_path)
         submission_dir_path.mkdir(mode=0o770, parents=False, exist_ok=False)
@@ -303,8 +307,9 @@ def download(
         files_dir=submission_dir_path / "files",
         log_dir=submission_dir_path / "logs",
         encrypted_files_dir=submission_dir_path / "encrypted_files",
+        threads=threads,
     )
-    worker_inst.download(config)
+    worker_inst.download(config, submission_id)
 
     log.info("Download finished!")
 

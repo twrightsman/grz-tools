@@ -215,7 +215,7 @@ def config_content(
         "grz_private_key_path": str(crypt4gh_grz_private_key_file_path),
         "submitter_private_key_path": str(crypt4gh_grz_public_key_file_path),
         "s3_options": {
-            "endpoint_url": "https://example.com",
+            "endpoint_url": "https://s3.amazonaws.com",
             "bucket": "testing",
             "access_key": "testing",
             "secret": "testing",
@@ -226,14 +226,6 @@ def config_content(
 @pytest.fixture
 def config_model(config_content):
     return ConfigModel(**config_content)
-
-
-@pytest.fixture
-def config_model_without_endpoint_url(config_model):
-    # Remove the endpoint URL from config and disable assignment validation (because `""` is not a valid URL)
-    config_model.s3_options.model_config.update({"validate_assignment": False})
-    config_model.s3_options.endpoint_url = ""
-    return config_model
 
 
 @pytest.fixture
@@ -260,12 +252,13 @@ def aws_credentials(config_model):
     """Mocked AWS Credentials for moto."""
     os.environ["AWS_ACCESS_KEY_ID"] = config_model.s3_options.access_key
     os.environ["AWS_SECRET_ACCESS_KEY"] = config_model.s3_options.secret
+    os.environ["MOTO_ALLOW_NONEXISTENT_REGION"] = "1"
 
 
 @pytest.fixture
 def boto_s3_client(aws_credentials):
     with mock_aws():
-        conn = boto3.client("s3", region_name="us-east-1")
+        conn = boto3.client("s3")
         yield conn
 
 

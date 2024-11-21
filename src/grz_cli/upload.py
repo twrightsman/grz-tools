@@ -6,7 +6,7 @@ import abc
 import logging
 import math
 import re
-from os import PathLike, cpu_count
+from os import PathLike
 from os.path import getsize
 from pathlib import Path
 from typing import TYPE_CHECKING, override
@@ -72,7 +72,7 @@ class S3BotoUploadWorker(UploadWorker):
         self,
         config: ConfigModel,
         status_file_path: str | PathLike,
-        threads: int | None = None,
+        threads: int = 1,
     ):
         """
         An upload manager for S3 storage
@@ -84,7 +84,7 @@ class S3BotoUploadWorker(UploadWorker):
 
         self._status_file_path = Path(status_file_path)
         self._config = config
-        self._threads = threads or cpu_count()
+        self._threads = threads
 
         self._init_s3_client()
 

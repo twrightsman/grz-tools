@@ -28,7 +28,7 @@ def download_file(remote_bucket, object_id, output_path):
 
 @mock_aws
 def test_boto_upload(
-    config_model_without_endpoint_url,
+    config_model,
     remote_bucket,
     temp_small_file_path,
     temp_small_file_sha256sum,
@@ -39,7 +39,7 @@ def test_boto_upload(
 ):
     # create upload worker
     upload_worker = S3BotoUploadWorker(
-        config=config_model_without_endpoint_url,
+        config=config_model,
         status_file_path=temp_upload_log_file_path,
     )
 
