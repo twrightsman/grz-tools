@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import logging
 from collections.abc import Generator
+from itertools import groupby
 from os import PathLike
 from pathlib import Path
 
@@ -245,23 +246,29 @@ class Submission:
                             self.files_dir / fastq_files[0].file_path
                         )
                     else:
-                        # TODO: Use laneId and flowcellId to identify pairs of R1 and R2 files
-                        fastq_r1_files = [
-                            f for f in fastq_files if f.read_order == ReadOrder.r1
-                        ]
-                        fastq_r2_files = [
-                            f for f in fastq_files if f.read_order == ReadOrder.r2
-                        ]
+                        # group reads by flowcell id and lane id
+                        key = lambda f: (f.flowcell_id, f.lane_id)
+                        fastq_files.sort(key=key)
+                        for _key, group in groupby(fastq_files, key):
+                            files = list(group)
 
-                        for fastq_r1, fastq_r2 in zip(
-                            fastq_r1_files, fastq_r2_files, strict=True
-                        ):
-                            yield from validate_paired_end_reads(
-                                # fastq R1
-                                self.files_dir / fastq_r1.file_path,
-                                # fastq R2
-                                self.files_dir / fastq_r2.file_path,
-                            )
+                            # separate R1 and R2 files
+                            fastq_r1_files = [
+                                f for f in files if f.read_order == ReadOrder.r1
+                            ]
+                            fastq_r2_files = [
+                                f for f in files if f.read_order == ReadOrder.r2
+                            ]
+
+                            for fastq_r1, fastq_r2 in zip(
+                                fastq_r1_files, fastq_r2_files, strict=True
+                            ):
+                                yield from validate_paired_end_reads(
+                                    # fastq R1
+                                    self.files_dir / fastq_r1.file_path,
+                                    # fastq R2
+                                    self.files_dir / fastq_r2.file_path,
+                                )
 
                 elif sequence_type == SequenceType.rna:
                     # TODO: What to check here?
