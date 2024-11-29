@@ -34,7 +34,7 @@ requires-python = ">=3.12"
 keywords = ["GRZ", "GDC", "S3"]
 
 [project.urls]
-"Homepage" = "https://github.com/ghga-de/grz_upload"
+"Homepage" = "https://codebase.helmholtz.cloud/grz-mv-genomseq/grz-cli"
 
 [project.scripts]
 grz-cli = "grz_cli.cli:cli"
