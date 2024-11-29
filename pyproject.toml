@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "grz-cli"
 version = "0.1.0"
-description = "A tool to encrypt and upload files to S3 with MD5 checksum logging."
+description = "Tool for validation, encryption and upload of MV submissions to GDCs."
 readme = "README.md"
 license = { text = "MIT" }
 authors = [
@@ -31,7 +31,7 @@ classifiers = [
     "Operating System :: OS Independent"
 ]
 requires-python = ">=3.12"
-keywords = ["encryption", "S3", "checksum", "upload"]
+keywords = ["GRZ", "GDC", "S3"]
 
 [project.urls]
 "Homepage" = "https://github.com/ghga-de/grz_upload"
