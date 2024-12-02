@@ -2,9 +2,18 @@
 
 import gzip
 import logging
+import os
+import typing
 from collections.abc import Generator
 from contextlib import contextmanager
+from gzip import GzipFile
+from io import RawIOBase
 from os import PathLike
+from typing import TextIO
+
+from tqdm.auto import tqdm
+
+from .file_operations import TqdmIOWrapper
 
 log = logging.getLogger(__name__)
 
@@ -20,21 +29,41 @@ def is_gzipped(file_path: str | PathLike) -> bool:
 
 
 @contextmanager
-def open_fastq(file_path: str | PathLike):
+def open_fastq(
+    file_path: str | PathLike, progress=True
+) -> Generator[TextIO, None, None]:
     """
     Open a FASTQ file, handling both regular and gzipped formats.
 
     :param file_path: Path to the FASTQ file
+    :param progress: Whether to show a progress bar
     :return: A file object opened in the appropriate mode (gzipped or plain text)
     """
-    if is_gzipped(file_path):
-        with gzip.open(file_path, "rb") as f:
-            # Open gzipped FASTQ
-            yield f
-    else:
-        with open(file_path) as f:
-            # Open regular FASTQ
-            yield f
+    handle: TqdmIOWrapper | GzipFile | typing.BinaryIO | None = None
+    with open(file_path, "rb") as fd:
+        # Open FASTQ
+        total_size = os.stat(file_path).st_size
+        if progress:
+            handle = TqdmIOWrapper(
+                typing.cast(RawIOBase, fd),
+                tqdm(
+                    total=total_size,
+                    desc="Reading FASTQ: ",
+                    unit="B",
+                    unit_scale=True,
+                    # unit_divisor=1024,  # make use of standard units e.g. KB, MB, etc.
+                    miniters=1,
+                ),
+            )
+        else:
+            handle = fd
+
+        if is_gzipped(file_path):
+            # decompress
+            with gzip.open(typing.cast(RawIOBase, handle), "rb") as decompressed_fd:
+                yield typing.cast(TextIO, decompressed_fd)
+        else:
+            yield typing.cast(TextIO, handle)
 
 
 def calculate_fastq_stats(file_path) -> tuple[int, set[int]]:

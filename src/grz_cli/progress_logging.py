@@ -5,17 +5,18 @@ from __future__ import annotations
 import copy
 import json
 import typing
+from collections.abc import Callable
 from os import PathLike
 from pathlib import Path
 
 from .file_operations import read_multiple_json
 from .models.v1_0_0.metadata import File as SubmissionFileMetadata
+from .states import State
 
 Index = tuple[str, float, int]
-State = dict
 
 
-class FileProgressLogger:
+class FileProgressLogger[T: State]:
     """
     A class to log and track the state of files over time. It stores file states in a log file of JSON entries
     and allows querying the state based on the file path and modification time.
@@ -23,7 +24,7 @@ class FileProgressLogger:
 
     _index = {"file_path": str, "modification_time": float, "size": int}
     # mapping of index -> (metadata, data)
-    _file_states: dict[Index, tuple[SubmissionFileMetadata, State]]
+    _file_states: dict[Index, tuple[SubmissionFileMetadata, T]]
 
     def __init__(self, log_file_path: str | PathLike):
         """
@@ -95,12 +96,17 @@ class FileProgressLogger:
         self,
         file_path: str | PathLike,
         file_metadata: dict | SubmissionFileMetadata,
-    ) -> State | None:
+        default: T | Callable[[Path, SubmissionFileMetadata], T] | None = None,
+    ) -> T | None:
         """
         Retrieves the stored state of a file if it exists in the log.
 
         :param file_path: The file path to query for the state.
         :param file_metadata: The metadata of the file to query for the state.
+        :param default: Default state to use if the file does not exist.
+            Can be a Callable that takes the file path and the file metadata as input and returns some state.
+
+            The default state gets automatically saved as the state for this file in case there is no stored state.
         :return: A dictionary representing the file's state, or None if the file's state isn't logged.
         """
         file_path = Path(file_path)
@@ -110,7 +116,7 @@ class FileProgressLogger:
         stored_metadata, stored_data = self._file_states.get(index, (None, None))
 
         # check if metadata matches
-        if file_metadata and not isinstance(file_metadata, SubmissionFileMetadata):
+        if not isinstance(file_metadata, SubmissionFileMetadata):
             file_metadata = SubmissionFileMetadata(**file_metadata)
 
         if stored_metadata and not isinstance(stored_metadata, SubmissionFileMetadata):
@@ -118,14 +124,28 @@ class FileProgressLogger:
 
         if stored_metadata and file_metadata == stored_metadata:
             return copy.deepcopy(stored_data)
-        # metadata mismatch -> no valid stored state -> return None
-        return None
+
+        # metadata mismatch -> no valid stored state -
+        if file_metadata and default:
+            if callable(default):
+                state = default(file_path, file_metadata)
+                self.set_state(file_path, file_metadata, state)
+                return state
+            else:
+                if not default:
+                    raise ValueError("Default state must be provided if not callable")
+                    # return None
+                default = typing.cast(T, default)
+                self.set_state(file_path, file_metadata, default)
+                return default
+        else:
+            return None
 
     def set_state(
         self,
         file_path: str | PathLike,
         file_metadata: dict | SubmissionFileMetadata,
-        state: State,
+        state: T,
     ):
         """
         Log the state of a file:

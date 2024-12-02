@@ -13,15 +13,17 @@ from .download import S3BotoDownloadWorker
 from .fastq_validation import validate_paired_end_reads, validate_single_end_reads
 from .file_operations import Crypt4GH, calculate_sha256
 from .models.config import ConfigModel
-from .models.v1_0_0.metadata import File as SubmissionFileMetadata
 from .models.v1_0_0.metadata import (
+    File,
     FileType,
     GrzSubmissionMetadata,
     ReadOrder,
     SequenceData,
-    SequenceType,
     SequencingLayout,
 )
+from .models.v1_0_0.metadata import File as SubmissionFileMetadata
+from .progress_logging import FileProgressLogger
+from .states import DecryptionState, EncryptionState, ValidationState
 from .upload import S3BotoUploadWorker
 
 log = logging.getLogger(__name__)
@@ -168,9 +170,9 @@ class Submission:
 
         :return: Generator of errors
         """
-        from .progress_logging import FileProgressLogger
-
-        progress_logger = FileProgressLogger(log_file_path=progress_log_file)
+        progress_logger = FileProgressLogger[ValidationState](
+            log_file_path=progress_log_file
+        )
         # cleanup log file and keep only files listed here
         progress_logger.cleanup(
             keep=[
@@ -182,43 +184,25 @@ class Submission:
         # - "errors": List[str]
         # - "validation_passed": bool
 
-        for local_file_path, file_metadata in self.files.items():
-            logged_state = progress_logger.get_state(local_file_path, file_metadata)
-
-            # determine if we can skip the verification
-            if logged_state is None:
-                self.__log.debug("State for %s not calculated yet", local_file_path)
-            elif not logged_state.get("validation_passed", False):
-                errors = logged_state.get("errors", [])
-                yield from errors
-
-                # skip re-verification
-                continue
-            else:
-                self.__log.debug(
-                    "Validation for %s already passed, skipping...",
-                    str(local_file_path),
-                )
-
-                # skip re-verification
-                continue
-
+        def validate_file(local_file_path, file_metadata):
             self.__log.debug("Validating '%s'...", str(local_file_path))
+
             # validate the file
             errors = list(file_metadata.validate_data(local_file_path))
             validation_passed = len(errors) == 0
 
-            # log state
-            progress_logger.set_state(
+            # return log state
+            return ValidationState(errors=errors, validation_passed=validation_passed)
+
+        for local_file_path, file_metadata in self.files.items():
+            logged_state = progress_logger.get_state(
                 local_file_path,
                 file_metadata,
-                state={
-                    "errors": errors,
-                    "validation_passed": validation_passed,
-                },
+                default=validate_file,  # validate the file if the state was not calculated yet
             )
 
-            yield from errors
+            if logged_state:
+                yield from logged_state["errors"]
 
     def validate_sequencing_data(
         self, progress_log_file: str | PathLike
@@ -228,51 +212,131 @@ class Submission:
 
         :return: Generator of errors
         """
+        from .progress_logging import FileProgressLogger
 
-        def find_fastq_files(sequence_data: SequenceData):
+        progress_logger = FileProgressLogger[ValidationState](
+            log_file_path=progress_log_file
+        )
+        # cleanup log file and keep only files listed here
+        progress_logger.cleanup(
+            keep=[
+                (file_path, file_metadata)
+                for file_path, file_metadata in self.files.items()
+            ]
+        )
+        # fields:
+        # - "errors": List[str]
+        # - "validation_passed": bool
+
+        def find_fastq_files(sequence_data: SequenceData) -> list[File]:
             return [f for f in sequence_data.files if f.file_type == FileType.fastq]
 
         for donor in self.metadata.content.donors:
             for lab_data in donor.lab_data:
-                sequence_type = lab_data.sequence_type
                 sequencing_layout = lab_data.sequencing_layout
                 sequence_data = lab_data.sequence_data
-                if sequence_type == SequenceType.dna:
-                    # find all FASTQ files
-                    fastq_files = find_fastq_files(sequence_data)
+                # find all FASTQ files
+                fastq_files = find_fastq_files(sequence_data)
 
-                    if sequencing_layout == SequencingLayout.single_end:
-                        yield from validate_single_end_reads(
-                            self.files_dir / fastq_files[0].file_path
+                match sequencing_layout:
+                    case (
+                        SequencingLayout.single_end
+                        | SequencingLayout.reverse
+                        | SequencingLayout.other
+                    ):
+                        yield from self._validate_single_end(
+                            fastq_files, progress_logger
                         )
-                    else:
-                        # group reads by flowcell id and lane id
-                        key = lambda f: (f.flowcell_id, f.lane_id)
-                        fastq_files.sort(key=key)
-                        for _key, group in groupby(fastq_files, key):
-                            files = list(group)
 
-                            # separate R1 and R2 files
-                            fastq_r1_files = [
-                                f for f in files if f.read_order == ReadOrder.r1
-                            ]
-                            fastq_r2_files = [
-                                f for f in files if f.read_order == ReadOrder.r2
-                            ]
+                    case SequencingLayout.paired_end:
+                        yield from self._validate_paired_end(
+                            fastq_files, progress_logger
+                        )
 
-                            for fastq_r1, fastq_r2 in zip(
-                                fastq_r1_files, fastq_r2_files, strict=True
-                            ):
-                                yield from validate_paired_end_reads(
-                                    # fastq R1
-                                    self.files_dir / fastq_r1.file_path,
-                                    # fastq R2
-                                    self.files_dir / fastq_r2.file_path,
-                                )
+    def _validate_single_end(
+        self,
+        fastq_files: list[File],
+        progress_logger: FileProgressLogger[ValidationState],
+    ) -> Generator[str, None, None]:
+        def validate_file(local_file_path, _file_metadata) -> ValidationState:
+            self.__log.debug("Validating '%s'...", str(local_file_path))
 
-                elif sequence_type == SequenceType.rna:
-                    # TODO: What to check here?
-                    pass
+            # validate the file
+            errors = list(validate_single_end_reads(local_file_path))
+            validation_passed = len(errors) == 0
+
+            # return log state
+            return ValidationState(
+                errors=errors,
+                validation_passed=validation_passed,
+            )
+
+        for fastq_file in fastq_files:
+            logged_state = progress_logger.get_state(
+                self.files_dir / fastq_file.file_path,
+                fastq_file,
+                default=validate_file,  # validate the file if the state was not calculated yet
+            )
+            if logged_state:
+                yield from logged_state["errors"]
+
+    def _validate_paired_end(
+        self,
+        fastq_files: list[File],
+        progress_logger: FileProgressLogger[ValidationState],
+    ) -> Generator[str, None, None]:
+        key = lambda f: (f.flowcell_id, f.lane_id)
+        fastq_files.sort(key=key)
+        for _key, group in groupby(fastq_files, key):
+            files = list(group)
+
+            # separate R1 and R2 files
+            fastq_r1_files = [f for f in files if f.read_order == ReadOrder.r1]
+            fastq_r2_files = [f for f in files if f.read_order == ReadOrder.r2]
+
+            for fastq_r1, fastq_r2 in zip(fastq_r1_files, fastq_r2_files, strict=True):
+                local_fastq_r1_path = self.files_dir / fastq_r1.file_path
+                local_fastq_r2_path = self.files_dir / fastq_r2.file_path
+
+                # get saved state
+                logged_state_r1 = progress_logger.get_state(
+                    local_fastq_r1_path,
+                    fastq_r1,
+                )
+                logged_state_r2 = progress_logger.get_state(
+                    local_fastq_r2_path,
+                    fastq_r2,
+                )
+                if (
+                    logged_state_r1 is None
+                    or logged_state_r2 is None
+                    or logged_state_r1 != logged_state_r2
+                ):
+                    # calculate state
+                    errors = list(
+                        validate_paired_end_reads(
+                            local_fastq_r1_path,  # fastq R1
+                            local_fastq_r2_path,  # fastq R2
+                        )
+                    )
+                    validation_passed = len(errors) == 0
+
+                    state = ValidationState(
+                        errors=errors,
+                        validation_passed=validation_passed,
+                    )
+                    # update state for both files
+                    progress_logger.set_state(  # fastq R1
+                        local_fastq_r1_path, fastq_r1, state
+                    )
+                    progress_logger.set_state(  # fastq R2
+                        local_fastq_r2_path, fastq_r2, state
+                    )
+
+                    yield from state["errors"]
+                else:
+                    # both fastq states are equal, so simply yield one of them
+                    yield from logged_state_r1["errors"]
 
     def encrypt(
         self,
@@ -312,7 +376,9 @@ class Submission:
 
         from .progress_logging import FileProgressLogger
 
-        progress_logger = FileProgressLogger(log_file_path=progress_log_file)
+        progress_logger = FileProgressLogger[EncryptionState](
+            log_file_path=progress_log_file
+        )
 
         try:
             public_keys = Crypt4GH.prepare_c4gh_keys(recipient_public_key_path)
@@ -347,7 +413,9 @@ class Submission:
 
                     self.__log.info(f"Encryption complete for {str(file_path)}. ")
                     progress_logger.set_state(
-                        file_path, file_metadata, state={"encryption_successful": True}
+                        file_path,
+                        file_metadata,
+                        state=EncryptionState(encryption_successful=True),
                     )
                 except Exception as e:
                     self.__log.error("Encryption failed for '%s'", str(file_path))
@@ -355,7 +423,9 @@ class Submission:
                     progress_logger.set_state(
                         file_path,
                         file_metadata,
-                        state={"encryption_successful": False, "error": str(e)},
+                        state=EncryptionState(
+                            encryption_successful=False, errors=[str(e)]
+                        ),
                     )
 
                     raise e
@@ -476,7 +546,9 @@ class EncryptedSubmission:
 
         from .progress_logging import FileProgressLogger
 
-        progress_logger = FileProgressLogger(log_file_path=progress_log_file)
+        progress_logger = FileProgressLogger[DecryptionState](
+            log_file_path=progress_log_file
+        )
 
         try:
             private_key = Crypt4GH.retrieve_private_key(recipient_private_key_path)
@@ -516,7 +588,7 @@ class EncryptedSubmission:
                     progress_logger.set_state(
                         encrypted_file_path,
                         file_metadata,
-                        state={"decryption_successful": True},
+                        state=DecryptionState(decryption_successful=True),
                     )
                 except Exception as e:
                     self.__log.error(
@@ -526,7 +598,9 @@ class EncryptedSubmission:
                     progress_logger.set_state(
                         encrypted_file_path,
                         file_metadata,
-                        state={"decryption_successful": False, "error": str(e)},
+                        state=DecryptionState(
+                            decryption_successful=False, errors=[str(e)]
+                        ),
                     )
 
                     raise e
@@ -665,21 +739,21 @@ class Worker:
             raise SubmissionValidationError(error_msg)
         else:
             self.__log.info("Checksum validation successful!")
-        self.__log.info("Starting checksum validation...")
 
+        self.__log.info("Starting sequencing data validation...")
         if errors := list(
             submission.validate_sequencing_data(
                 progress_log_file=self.progress_file_sequencing_data_validation
             )
         ):
-            error_msg = "\n".join(["Checksum validation failed! Errors:", *errors])
+            error_msg = "\n".join(
+                ["Sequencing data validation failed! Errors:", *errors]
+            )
             self.__log.error(error_msg)
 
             raise SubmissionValidationError(error_msg)
         else:
-            self.__log.info("Checksum validation successful!")
-
-        # TODO: validate FASTQ
+            self.__log.info("Sequencing data validation successful!")
 
     def encrypt(
         self,
