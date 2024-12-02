@@ -67,12 +67,6 @@ curl -L "https://codebase.helmholtz.cloud/grz-mv-genomseq/grz-cli/-/raw/v0.1.0/e
 # create conda environment and activate it
 conda env create -f environment.yaml -n grz-tools
 conda activate grz-tools
-
-# install the grz-cli tool
-# TODO update: This requires membership in the repository
-pip install "git+ssh://git@codebase.helmholtz.cloud/grz-mv-genomseq/grz-cli.git@dev"
-# TODO update: This will work once the repository is publicly accessible:
-pip install "git+https://codebase.helmholtz.cloud/grz-mv-genomseq/grz-cli@v0.1.0"
 ```
 
 ### Development setup
