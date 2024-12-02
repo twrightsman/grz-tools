@@ -7,7 +7,7 @@ name = "grz-cli"
 version = "0.1.0"
 description = "Tool for validation, encryption and upload of MV submissions to GDCs."
 readme = "README.md"
-license = { text = "MIT" }
+license = "MIT"
 authors = [
     { name = "Koray Kirli", email = "koraykirli@gmail.com" },
     { name = "Mathias Lesche", email = "mathias.lesche@tu-dresden.de" },
