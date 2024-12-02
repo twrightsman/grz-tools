@@ -18,6 +18,7 @@ from tqdm.auto import tqdm
 
 from .models.config import ConfigModel
 from .progress_logging import FileProgressLogger
+from .states import DownloadState
 
 MULTIPART_THRESHOLD = 8 * 1024 * 1024  # 8MiB, boto3 default
 MULTIPART_CHUNKSIZE = 8 * 1024 * 1024  # 8MiB, boto3 default
@@ -174,7 +175,7 @@ class S3BotoDownloadWorker:
         Upload an encrypted submission
         :param encrypted_submission: The encrypted submission to upload
         """
-        progress_logger = FileProgressLogger(self._status_file_path)
+        progress_logger = FileProgressLogger[DownloadState](self._status_file_path)
 
         encrypted_files_key_prefix = f"{submission_id}/files/"
 
@@ -216,7 +217,7 @@ class S3BotoDownloadWorker:
                             progress_logger.set_state(
                                 full_path,
                                 file_metadata,
-                                state={"download_successful": True},
+                                state=DownloadState(download_successful=True),
                             )
                         except Exception as e:
                             self.__log.error("Download failed for '%s'", str(full_path))
@@ -224,7 +225,9 @@ class S3BotoDownloadWorker:
                             progress_logger.set_state(
                                 full_path,
                                 file_metadata,
-                                state={"download_successful": False, "error": str(e)},
+                                state=DownloadState(
+                                    download_successful=False, errors=[str(e)]
+                                ),
                             )
 
                             raise e

@@ -16,6 +16,7 @@
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Generator
 from datetime import date
 from enum import StrEnum
@@ -32,6 +33,8 @@ from pydantic import (
 from pydantic.alias_generators import to_camel
 
 from grz_cli.file_operations import calculate_sha256  # type: ignore
+
+log = logging.getLogger(__name__)
 
 
 class StrictBaseModel(BaseModel):
@@ -831,10 +834,11 @@ class GrzSubmissionMetadata(StrictBaseModel):
                 threshold = thresholds.get(
                     (lab_datum.library_type, lab_datum.sequence_subtype)
                 )
-                if not threshold:
-                    raise ValueError(
-                        f"Threshold for {lab_datum.library_type} {lab_datum.sequence_subtype} not found."
+                if threshold is None:
+                    log.warning(
+                        f"Threshold for {lab_datum.library_type} - {lab_datum.sequence_subtype} not found!"
                     )
+
                 sequence_data = lab_datum.sequence_data
                 if sequence_data.mean_depth_of_coverage < threshold:
                     raise ValueError(

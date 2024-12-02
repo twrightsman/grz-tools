@@ -20,6 +20,7 @@ from tqdm.auto import tqdm
 
 from .models.config import ConfigModel
 from .progress_logging import FileProgressLogger
+from .states import UploadState
 
 MULTIPART_THRESHOLD = 8 * 1024 * 1024  # 8MiB, boto3 default
 MULTIPART_CHUNKSIZE = 8 * 1024 * 1024  # 8MiB, boto3 default
@@ -159,7 +160,7 @@ class S3BotoUploadWorker(UploadWorker):
         Upload an encrypted submission
         :param encrypted_submission: The encrypted submission to upload
         """
-        progress_logger = FileProgressLogger(self._status_file_path)
+        progress_logger = FileProgressLogger[UploadState](self._status_file_path)
         metadata_file_path, metadata_s3_object_id = (
             encrypted_submission.get_metadata_file_path_and_object_id()
         )
@@ -190,7 +191,9 @@ class S3BotoUploadWorker(UploadWorker):
 
                     self.__log.info(f"Upload complete for {str(file_path)}. ")
                     progress_logger.set_state(
-                        file_path, file_metadata, state={"upload_successful": True}
+                        file_path,
+                        file_metadata,
+                        state=UploadState(upload_successful=True),
                     )
                 except Exception as e:
                     self.__log.error("Upload failed for '%s'", str(file_path))
@@ -198,7 +201,7 @@ class S3BotoUploadWorker(UploadWorker):
                     progress_logger.set_state(
                         file_path,
                         file_metadata,
-                        state={"upload_successful": False, "error": str(e)},
+                        state=UploadState(upload_successful=False, errors=[str(e)]),
                     )
 
                     raise e
