@@ -7,6 +7,11 @@ A command-line tool for validating, encrypting, uploading and downloading submis
 - [Introduction](#introduction)
 - [Features](#features)
 - [Installation](#installation)
+  - [Requirements](#requirements)
+  - [End-user setup](#end-user)
+    - [Installation via `conda` (recommended)](#installation-via-conda-recommended)
+    - [Installation via `pip` (not recommended)](#installation-via-pip-not-recommended)
+  - [Development setup](#development-setup)
 - [Usage](#usage)
   - [Configuration](#configuration)
   - [Exemplary submission procedure](#exemplary-submission-procedure)
@@ -46,28 +51,60 @@ The current version of the tool requires the `working_dir` to have at least as m
 - **Download**: Download encrypted files from a GRZ (via built-in `boto3`).
 - **Logging**: Log progress and results of operations
 
+
 ## Installation
 
-### End-user
-This tool uses the `conda` package manager.
-If `conda` is not yet available on your system, you can install the [Miniforge conda distribution](https://github.com/conda-forge/miniforge) by running the following commands:
+### Requirements
+Beside of the disk space requirements for the submission data, this tool also requires a linux environment, e.g.:
+- Linux server
+- Virtual machine running linux
+- Docker container
+- Windows subsystem for linux
+- ...
+
+
+### End-user setup
+The recommended method to install this tool is using the conda package manager.
+
+
+#### Installation via `conda` (recommended)
+
+If `conda` is not yet available on your system, we recommend to install the [Miniforge conda distribution](https://github.com/conda-forge/miniforge) by running the following commands:
 ```bash
 curl -L -O "https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-$(uname)-$(uname -m).sh"
 bash Miniforge3-$(uname)-$(uname -m).sh
 ```
+There are also alternative ways to install conda:
+- [Micromamba, a single executable that does not require a base environment](https://mamba.readthedocs.io/en/latest/user_guide/micromamba.html)
+- [Official installation instructions](https://docs.conda.io/projects/conda/en/latest/user-guide/install/index.html)
+
 Next, install the `grz-cli` tool:
 ```bash
-# TODO update: This requires membership in the repository
-# download environment.yaml from the git repository:
-git archive --remote=ssh://git@codebase.helmholtz.cloud/grz-mv-genomseq/grz-cli.git dev environment.yaml | tar -xv
-# TODO update: This will work once the repository is publicly accessible:
-# download environment.yaml from the git repository:
-curl -L "https://codebase.helmholtz.cloud/grz-mv-genomseq/grz-cli/-/raw/v0.1.0/environment.yaml?ref_type=heads" > environment.yaml
-
 # create conda environment and activate it
-conda env create -f environment.yaml -n grz-tools
+conda create -n grz-tools -c conda-forge -c bioconda "grz-cli"
 conda activate grz-tools
 ```
+
+##### Update instructions:
+Use the following command to update the tool:
+```bash
+conda update -n grz-tools "grz-cli"
+```
+
+
+#### Installation via `pip` (not recommended)
+While installation via `pip` is possible, it is not recommended because users must ensure
+that the correct Python version is already installed and that they are using a virtual python environment.
+
+```bash
+pip install grz-cli
+```
+##### Update instructions:
+Use the following command to update the tool:
+```bash
+pip upgrade grz-cli
+```
+
 
 ### Development setup
 For development purposes, you can clone the repository and install the package in editable mode:
