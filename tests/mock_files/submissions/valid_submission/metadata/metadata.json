@@ -7,8 +7,8 @@
     "tanG": "aaaaaaaa00000000aaaaaaaa00000000",
     "genomicDataCenterId": "GRZK00007",
     "clinicalDataNodeId": "KDKK00007",
-    "genomicStudyType": "single",
-    "genomicStudySubtype": "tumor-only"
+    "genomicStudyType": "duo",
+    "genomicStudySubtype": "tumor+germline"
   },
   "donors": [
     {
@@ -53,7 +53,7 @@
             "bioinformaticsPipelineVersion": "2e70912",
             "percentBasesQ30": 95.4,
             "meanDepthOfCoverage": 102.4,
-            "minCoverage": 25.4,
+            "minCoverage": 100.4,
             "targetedRegionsAboveMinCoverage": 0.96,
             "readLength": 150,
             "nonCodingVariants": true,
@@ -131,7 +131,7 @@
             "bioinformaticsPipelineVersion": "2e70912",
             "percentBasesQ30": 95.4,
             "meanDepthOfCoverage": 252.4,
-            "minCoverage": 25.4,
+            "minCoverage": 100.4,
             "targetedRegionsAboveMinCoverage": 0.96,
             "readLength": 150,
             "nonCodingVariants": true,
@@ -224,7 +224,7 @@
             "bioinformaticsPipelineVersion": "2e70912",
             "percentBasesQ30": 95.4,
             "meanDepthOfCoverage": 252.4,
-            "minCoverage": 25.4,
+            "minCoverage": 30.4,
             "targetedRegionsAboveMinCoverage": 0.96,
             "readLength": 150,
             "nonCodingVariants": true,

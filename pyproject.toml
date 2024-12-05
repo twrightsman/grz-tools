@@ -188,3 +188,7 @@ python_version = "3.12"
 plugins = "pydantic.mypy"
 packages = "src"
 
+[tool.pytest.ini_options]
+addopts = [
+    "--import-mode=importlib",
+]
