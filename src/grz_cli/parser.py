@@ -67,7 +67,7 @@ class SubmissionMetadata:
             raise e
 
     @property
-    def index_case_id(self) -> str:
+    def transaction_id(self) -> str:
         """
         The index case ID of this submission
         """
@@ -485,7 +485,7 @@ class EncryptedSubmission:
         :return: tuple with the `local_file_path` and s3_object_id of the metadata file
         """
         return Path(self.metadata.file_path), str(
-            Path(self.metadata.index_case_id)
+            Path(self.metadata.transaction_id)
             / "metadata"
             / self.metadata.file_path.name
         )
@@ -497,7 +497,7 @@ class EncryptedSubmission:
         retval = {}
         for local_file_path, file_metadata in self.encrypted_files.items():
             retval[local_file_path] = str(
-                Path(self.metadata.index_case_id)
+                Path(self.metadata.transaction_id)
                 / "files"
                 / self.get_encrypted_file_path(file_metadata.file_path)
             )
