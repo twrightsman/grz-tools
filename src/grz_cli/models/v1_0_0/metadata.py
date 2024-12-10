@@ -113,9 +113,7 @@ class Submission(StrictBaseModel):
     ID of the genomic data center in the format GRZXXXnnn.
     """
 
-    clinical_data_node_id: Annotated[
-        str, StringConstraints(pattern=r"^(GRZ|KDK)[A-Z0-9]{3}[0-9]{3}$")
-    ]
+    clinical_data_node_id: Annotated[str, StringConstraints(pattern=r"^(GRZ|KDK)[A-Z0-9]{3}[0-9]{3}$")]
     """
     ID of the genomic data center in the format KDKXXXnnn.
     """
@@ -466,9 +464,7 @@ class SequenceData(StrictBaseModel):
     Minimum coverage
     """
 
-    targeted_regions_above_min_coverage: Annotated[
-        float, Field(strict=True, ge=0.0, le=1.0)
-    ]
+    targeted_regions_above_min_coverage: Annotated[float, Field(strict=True, ge=0.0, le=1.0)]
     """
     Fraction of targeted regions that are above minimum coverage
     """
@@ -592,9 +588,7 @@ class LabDatum(StrictBaseModel):
     The sequencing layout, aka the end type of sequencing.
     """
 
-    tumor_cell_count: Annotated[
-        float | None, Field(alias="tumorCellCount", ge=0.0, le=100.0)
-    ] = None
+    tumor_cell_count: Annotated[float | None, Field(alias="tumorCellCount", ge=0.0, le=100.0)] = None
     """
     Tumor cell count in %
     """
@@ -703,9 +697,7 @@ class Donor(StrictBaseModel):
         lib_type = {LibraryType.panel, LibraryType.wes}
 
         for lab_datum in self.lab_data:
-            if lab_datum.library_type in lib_type and not contains_bed_files(
-                lab_datum.sequence_data
-            ):
+            if lab_datum.library_type in lib_type and not contains_bed_files(lab_datum.sequence_data):
                 raise ValueError(
                     f"BED file missing for lab datum '{lab_datum.lab_data_name}' in donor '{self.case_id}'."
                 )
@@ -753,12 +745,8 @@ class Donor(StrictBaseModel):
                         )
 
                 # check if there is an equal number of R1 and R2 files
-                r1_fastq_files = [
-                    i for i in fastq_files if i.read_order == ReadOrder.r1
-                ]
-                r2_fastq_files = [
-                    i for i in fastq_files if i.read_order == ReadOrder.r2
-                ]
+                r1_fastq_files = [i for i in fastq_files if i.read_order == ReadOrder.r1]
+                r2_fastq_files = [i for i in fastq_files if i.read_order == ReadOrder.r2]
 
                 if len(r1_fastq_files) != len(r2_fastq_files):
                     raise ValueError(
@@ -792,21 +780,15 @@ class GrzSubmissionMetadata(StrictBaseModel):
             case GenomicStudyType.single:
                 # Check if the submission has at least one donor
                 if not self.donors:
-                    raise ValueError(
-                        "At least one donor is required for a single study."
-                    )
+                    raise ValueError("At least one donor is required for a single study.")
             case GenomicStudyType.duo:
                 # Check if the submission has at least two donors
                 if len(self.donors) < 2:
-                    raise ValueError(
-                        "At least two donors are required for a duo study."
-                    )
+                    raise ValueError("At least two donors are required for a duo study.")
             case GenomicStudyType.trio:
                 # Check if the submission has at least three donors
                 if len(self.donors) < 3:
-                    raise ValueError(
-                        "At least three donors are required for a trio study."
-                    )
+                    raise ValueError("At least three donors are required for a trio study.")
 
         return self
 
@@ -880,14 +862,10 @@ type Thresholds = dict[tuple[str, str, str], dict[str, Any]]
 
 def _load_thresholds() -> Thresholds:
     threshold_definitions = json.load(
-        files("grz_cli")
-        .joinpath("resources", "thresholds.json")
-        .open("r", encoding="utf-8")
+        files("grz_cli").joinpath("resources", "thresholds.json").open("r", encoding="utf-8")
     )
     threshold_definitions = {
-        (d["genomicStudySubtype"], d["libraryType"], d["sequenceSubtype"]): d[
-            "thresholds"
-        ]
+        (d["genomicStudySubtype"], d["libraryType"], d["sequenceSubtype"]): d["thresholds"]
         for d in threshold_definitions
     }
     return threshold_definitions
