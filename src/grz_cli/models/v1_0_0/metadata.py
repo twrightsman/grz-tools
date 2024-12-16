@@ -23,7 +23,7 @@ from datetime import date
 from enum import StrEnum
 from importlib.resources import files
 from pathlib import Path
-from typing import Annotated, Any
+from typing import Annotated, Any, Self
 
 from pydantic import (
     BaseModel,
@@ -107,15 +107,15 @@ class Submission(StrictBaseModel):
 
     genomic_data_center_id: Annotated[
         str,
-        StringConstraints(pattern=r"^(GRZ|KDK)[A-Z0-9]{3}[0-9]{3}$"),
+        StringConstraints(pattern=r"^(GRZ)[A-Z0-9]{3}[0-9]{3}$"),
     ]
     """
     ID of the genomic data center in the format GRZXXXnnn.
     """
 
-    clinical_data_node_id: Annotated[str, StringConstraints(pattern=r"^(GRZ|KDK)[A-Z0-9]{3}[0-9]{3}$")]
+    clinical_data_node_id: Annotated[str, StringConstraints(pattern=r"^(KDK)[A-Z0-9]{3}[0-9]{3}$")]
     """
-    ID of the genomic data center in the format KDKXXXnnn.
+    ID of the clinical data node in the format KDKXXXnnn.
     """
 
     genomic_study_type: GenomicStudyType
@@ -262,10 +262,13 @@ class LibraryType(StrEnum):
     """
 
     panel = "panel"
+    panel_lr = "panel_lr"
     wes = "wes"
+    wes_lr = "wes_lr"
     wgs = "wgs"
     wgs_lr = "wgs_lr"
     wxs = "wxs"
+    wxs_lr = "wxs_lr"
     other = "other"
     unknown = "unknown"
 
@@ -433,6 +436,16 @@ class File(StrictBaseModel):
         return self.file_path + ".c4gh"
 
 
+class PercentBasesAboveQualityThreshold(StrictBaseModel):
+    """Percentage of bases with a specified minimum quality threshold"""
+
+    minimum_quality: Annotated[float, Field(strict=True, ge=0.0)]
+    """The minimum quality score threshold"""
+
+    percent: Annotated[float, Field(strict=True, ge=0.0, le=100.0)]
+    """Percentage of bases that meet or exceed the minimum quality score"""
+
+
 class SequenceData(StrictBaseModel):
     bioinformatics_pipeline_name: str
     """
@@ -449,9 +462,9 @@ class SequenceData(StrictBaseModel):
     Reference genome used
     """
 
-    percent_bases_q30: Annotated[float, Field(strict=True, ge=0.0, le=100.0)]
+    percent_bases_above_quality_threshold: PercentBasesAboveQualityThreshold
     """
-    Percentage of bases with Q30 or higher
+    Percentage of bases with a specified minimum quality threshold
     """
 
     mean_depth_of_coverage: Annotated[float, Field(strict=True, ge=0.0)]
@@ -603,6 +616,15 @@ class LabDatum(StrictBaseModel):
     Sequence data generated from the wet lab experiment.
     """
 
+    @model_validator(mode="after")
+    def validate_sequencing_setup(self) -> Self:
+        if self.library_type in {LibraryType.wxs, LibraryType.wxs_lr} and self.sequence_type != SequenceType.rna:
+            raise ValueError(
+                f"Error in lab datum '{self.lab_data_name}': "
+                f"WXS requires RNA sequencing, but got '{self.sequence_type}'."
+            )
+        return self
+
 
 class Donor(StrictBaseModel):
     case_id: Annotated[str, StringConstraints(pattern=r"^[a-fA-F0-9]{32}$")]
@@ -694,10 +716,17 @@ class Donor(StrictBaseModel):
         def contains_bed_files(sequence_data: SequenceData) -> bool:
             return any(f.file_type == FileType.bed for f in sequence_data.files)
 
-        lib_type = {LibraryType.panel, LibraryType.wes}
+        lib_types = {
+            LibraryType.panel,
+            LibraryType.wes,
+            LibraryType.wxs,
+            LibraryType.panel_lr,
+            LibraryType.wes_lr,
+            LibraryType.wxs_lr,
+        }
 
         for lab_datum in self.lab_data:
-            if lab_datum.library_type in lib_type and not contains_bed_files(lab_datum.sequence_data):
+            if lab_datum.library_type in lib_types and not contains_bed_files(lab_datum.sequence_data):
                 raise ValueError(
                     f"BED file missing for lab datum '{lab_datum.lab_data_name}' in donor '{self.case_id}'."
                 )
