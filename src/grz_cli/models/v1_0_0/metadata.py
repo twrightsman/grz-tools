@@ -316,7 +316,7 @@ class TumorCellCount(StrictBaseModel):
     Tuple of tumor cell counts and how they were determined.
     """
 
-    count: Annotated[float, Field(alias="tumorCellCount", ge=0.0, le=100.0)]
+    count: Annotated[float, Field(ge=0.0, le=100.0)]
     """
     Tumor cell count in %
     """
@@ -849,6 +849,21 @@ class GrzSubmissionMetadata(StrictBaseModel):
                 # Check if the submission has at least three donors
                 if len(self.donors) < 3:
                     raise ValueError("At least three donors are required for a trio study.")
+
+        return self
+
+    @model_validator(mode="after")
+    def check_for_tumor_cell_count(self):
+        """
+        Check if oncology samples have tumor cell counts.
+        """
+        for donor in self.donors:
+            case_id = donor.tan_g
+            for lab_datum in donor.lab_data:
+                if lab_datum.sequence_subtype == SequenceSubtype.somatic and lab_datum.tumor_cell_count is None:
+                    raise ValueError(
+                        f"Missing tumor cell count for donor '{case_id}', lab datum '{lab_datum.lab_data_name}'!"
+                    )
 
         return self
 
