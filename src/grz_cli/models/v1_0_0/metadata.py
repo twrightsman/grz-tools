@@ -899,7 +899,20 @@ class GrzSubmissionMetadata(StrictBaseModel):
                 )
                 thresholds = threshold_definitions.get(key)
                 if thresholds is None:
-                    log.warning(f"Thresholds for {key} not found! Skipping.")
+                    allowed_combinations = sorted(list(threshold_definitions.keys()))
+                    allowed_combinations = "\n".join([f"  - {combination}" for combination in allowed_combinations])
+                    names = (
+                        "submission.genomicStudySubtype",
+                        "labData.libraryType",
+                        "labData.sequenceSubtype",
+                    )
+                    info = dict(zip(names, key, strict=True))
+                    log.warning(
+                        f"No thresholds for the specified combination {info} found (donor {donor.tan_g})!\n"
+                        f"Valid combinations:\n{allowed_combinations}.\n"
+                        f"See https://www.bfarm.de/SharedDocs/Downloads/DE/Forschung/modellvorhaben-genomsequenzierung/Qs-durch-GRZ.pdf?__blob=publicationFile for more details.\n"
+                        f"Skipping threshold validation."
+                    )
                     continue
 
                 _check_thresholds(donor, lab_datum, thresholds)
