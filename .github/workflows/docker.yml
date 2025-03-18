@@ -82,6 +82,7 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: grz-cli
+          path: /tmp
 
       - name: Load image
         run: |
