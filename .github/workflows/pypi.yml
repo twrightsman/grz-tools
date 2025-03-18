@@ -29,11 +29,14 @@ jobs:
       - name: Build package
         run: uv build
 
+      # workaround for folders?
+      - run: mkdir tmp-dir && mv dist tmp-dir/ && mv tmp-dir dist
+
       - name: Save build artifacts
         uses: actions/upload-artifact@v4
         with:
           name: grz-cli-build
-          path: dist/*
+          path: ./dist
 
   pypi-publish:
     name: Upload release to PyPI
