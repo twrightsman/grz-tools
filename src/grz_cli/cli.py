@@ -5,6 +5,7 @@ CLI module for handling command-line interface operations.
 import importlib
 import logging
 import logging.config
+import os
 import sys
 from os import PathLike, sched_getaffinity
 from pathlib import Path
@@ -95,6 +96,14 @@ output_dir = click.option(
 )
 
 
+def read_config(config_path: str | PathLike) -> ConfigModel:
+    """Reads the configuration file and validates it against the schema."""
+    with open(config_path, encoding="utf-8") as f:
+        config = ConfigModel(**yaml.safe_load(f))
+
+    return config
+
+
 class OrderedGroup(click.Group):
     """
     A click Group that keeps track of the order in which commands are added.
@@ -105,48 +114,7 @@ class OrderedGroup(click.Group):
         return list(self.commands.keys())
 
 
-@click.group(
-    cls=OrderedGroup,
-    help="Validate, encrypt, decrypt and upload submissions to a GRZ/GDC.",
-)
-@click.version_option(
-    version=importlib.metadata.version("grz-cli"),
-    prog_name="grz-cli",
-    message=f"%(prog)s v%(version)s (metadata schema versions: {', '.join(grz_pydantic_models.submission.metadata.get_supported_versions())})",
-)
-@click.option("--log-file", metavar="FILE", type=str, help="Path to log file")
-@click.option(
-    "--log-level",
-    default="INFO",
-    type=click.Choice(["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]),
-    help="Set the log level (default: INFO)",
-)
-def cli(log_file: str | None = None, log_level: str = "INFO"):
-    """
-    Command-line interface function for setting up logging.
-
-    :param log_file: Path to the log file. If provided, a file logger will be added.
-    :param log_level: Log level for the logger. It should be one of the following:
-                       DEBUG, INFO, WARNING, ERROR, CRITICAL.
-    """
-    if log_file:
-        add_filelogger(
-            log_file,
-            log_level.upper(),
-        )  # Add file logger
-
-    # show only time and log level in STDOUT
-    logging.basicConfig(
-        format="%(asctime)s - %(levelname)s - %(message)s",
-    )
-
-    # set the log level for this package
-    logging.getLogger(PACKAGE_ROOT).setLevel(log_level.upper())
-
-    log.debug("Logging setup complete.")
-
-
-@cli.command()
+@click.command()
 @submission_dir
 def validate(submission_dir):
     """
@@ -170,7 +138,7 @@ def validate(submission_dir):
     log.info("Validation finished!")
 
 
-@cli.command()
+@click.command()
 @submission_dir
 @config_file
 def encrypt(
@@ -216,41 +184,7 @@ def encrypt(
     log.info("Encryption successful!")
 
 
-@cli.command()
-@submission_dir
-@config_file
-def decrypt(
-    submission_dir,
-    config_file,
-):
-    """
-    Decrypt a submission.
-
-    Decrypting a submission requires the _private_ key of the original recipient.
-    """
-    config = read_config(config_file)
-
-    grz_privkey_path = config.grz_private_key_path
-    if not grz_privkey_path:
-        log.error("GRZ private key path is required for decryption.")
-        sys.exit(1)
-
-    log.info("Starting decryption...")
-
-    submission_dir = Path(submission_dir)
-
-    worker_inst = Worker(
-        metadata_dir=submission_dir / "metadata",
-        files_dir=submission_dir / "files",
-        log_dir=submission_dir / "logs",
-        encrypted_files_dir=submission_dir / "encrypted_files",
-    )
-    worker_inst.decrypt(grz_privkey_path)
-
-    log.info("Encryption successful!")
-
-
-@cli.command()
+@click.command()
 @submission_dir
 @config_file
 @threads
@@ -281,7 +215,28 @@ def upload(
     log.info("Upload finished!")
 
 
-@cli.command()
+@click.command("submit")
+@submission_dir
+@config_file
+@threads
+@click.pass_context
+def submit(ctx, submission_dir, config_file, threads):
+    """
+    Validate, encrypt, and then upload.
+
+    This is a convenience command that performs the following steps in order:
+    1. Validate the submission
+    2. Encrypt the submission
+    3. Upload the encrypted submission
+    """
+    click.echo("Starting submission process...")
+    ctx.invoke(validate, submission_dir=submission_dir)
+    ctx.invoke(encrypt, submission_dir=submission_dir, config_file=config_file)
+    ctx.invoke(upload, submission_dir=submission_dir, config_file=config_file, threads=threads)
+    click.echo("Submission finished!")
+
+
+@click.command()
 @submission_id
 @output_dir
 @config_file
@@ -319,34 +274,106 @@ def download(
     log.info("Download finished!")
 
 
-@cli.command("submit")
+@click.command()
 @submission_dir
 @config_file
-@threads
-@click.pass_context
-def submit(ctx, submission_dir, config_file, threads):
+def decrypt(
+    submission_dir,
+    config_file,
+):
     """
-    Validate, encrypt, and then upload.
+    Decrypt a submission.
 
-    This is a convenience command that performs the following steps in order:
-    1. Validate the submission
-    2. Encrypt the submission
-    3. Upload the encrypted submission
+    Decrypting a submission requires the _private_ key of the original recipient.
     """
-    click.echo("Starting submission process...")
-    ctx.invoke(validate, submission_dir=submission_dir)
-    ctx.invoke(encrypt, submission_dir=submission_dir, config_file=config_file)
-    ctx.invoke(upload, submission_dir=submission_dir, config_file=config_file, threads=threads)
-    click.echo("Submission finished!")
+    config = read_config(config_file)
+
+    grz_privkey_path = config.grz_private_key_path
+    if not grz_privkey_path:
+        log.error("GRZ private key path is required for decryption.")
+        sys.exit(1)
+
+    log.info("Starting decryption...")
+
+    submission_dir = Path(submission_dir)
+
+    worker_inst = Worker(
+        metadata_dir=submission_dir / "metadata",
+        files_dir=submission_dir / "files",
+        log_dir=submission_dir / "logs",
+        encrypted_files_dir=submission_dir / "encrypted_files",
+    )
+    worker_inst.decrypt(grz_privkey_path)
+
+    log.info("Encryption successful!")
 
 
-def read_config(config_path: str | PathLike) -> ConfigModel:
-    """Reads the configuration file and validates it against the schema."""
-    with open(config_path, encoding="utf-8") as f:
-        config = ConfigModel(**yaml.safe_load(f))
+def build_cli(grz_mode=False):
+    """
+    Factory for building the CLI application.
+    """
 
-    return config
+    @click.group(
+        cls=OrderedGroup,
+        help="Validate, encrypt, decrypt and upload submissions to a GRZ/GDC.",
+    )
+    @click.version_option(
+        version=importlib.metadata.version("grz-cli"),
+        prog_name="grz-cli",
+        message=f"%(prog)s v%(version)s (metadata schema versions: {', '.join(grz_pydantic_models.submission.metadata.get_supported_versions())})",
+    )
+    @click.option("--log-file", metavar="FILE", type=str, help="Path to log file")
+    @click.option(
+        "--log-level",
+        default="INFO",
+        type=click.Choice(["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]),
+        help="Set the log level (default: INFO)",
+    )
+    def cli(log_file: str | None = None, log_level: str = "INFO"):
+        """
+        Command-line interface function for setting up logging.
+
+        :param log_file: Path to the log file. If provided, a file logger will be added.
+        :param log_level: Log level for the logger. It should be one of the following:
+                           DEBUG, INFO, WARNING, ERROR, CRITICAL.
+        """
+        if log_file:
+            add_filelogger(
+                log_file,
+                log_level.upper(),
+            )  # Add file logger
+
+        # show only time and log level in STDOUT
+        logging.basicConfig(
+            format="%(asctime)s - %(levelname)s - %(message)s",
+        )
+
+        # set the log level for this package
+        logging.getLogger(PACKAGE_ROOT).setLevel(log_level.upper())
+
+        log.debug("Logging setup complete.")
+
+    cli.add_command(validate)
+    cli.add_command(encrypt)
+    cli.add_command(upload)
+    cli.add_command(submit)
+
+    if grz_mode:
+        cli.add_command(download)
+        cli.add_command(decrypt)
+
+    return cli
+
+
+def main():
+    """
+    Main entry point for the CLI application.
+    """
+    grz_mode = os.environ.get("GRZ_MODE", "false").lower() in {"true", "yes", "1"}
+
+    cli = build_cli(grz_mode=grz_mode)
+    cli()
 
 
 if __name__ == "__main__":
-    cli()
+    main()
