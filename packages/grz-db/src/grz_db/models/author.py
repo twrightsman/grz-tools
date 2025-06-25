@@ -1,6 +1,6 @@
 import logging
 
-from cryptography.hazmat.primitives.asymmetric.types import PrivateKeyTypes
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 log = logging.getLogger(__name__)
 
@@ -11,7 +11,7 @@ class Author:
         self.private_key_bytes = private_key_bytes
         self.private_key_passphrase = private_key_passphrase
 
-    def private_key(self) -> PrivateKeyTypes:
+    def private_key(self) -> Ed25519PrivateKey:
         from functools import partial
         from getpass import getpass
 
@@ -33,4 +33,6 @@ class Author:
                 raise ValueError("Could not load private key, likely incorrect passphrase supplied.") from e
             else:
                 raise e
+        if not isinstance(private_key, Ed25519PrivateKey):
+            raise TypeError(f"private_key must be an Ed25519PrivateKey. Got {type(private_key)}")
         return private_key
