@@ -36,45 +36,29 @@ def clean(submission_id, config_file, yes_i_really_mean_it: bool):
 
         resource = init_s3_resource(config.s3)
         bucket = resource.Bucket(bucket_name)
-        log.info(f"Deleting {prefix} from {bucket_name} …")
+        log.info(f"Cleaning '{prefix}' from '{bucket_name}' …")
+        # add a marker at start of cleaning to
+        #  1.) ensure user can upload the "cleaned" marker at the end _before_ we start deleting things
+        #  2.) detect incomplete cleans if needed
+        bucket.put_object(Body=b"", Key=f"{submission_id}/cleaning")
 
-        responses = bucket.objects.filter(Prefix=prefix).delete()
-        if not responses:
+        # keep metadata.json to prevent future re-uploads
+        keys_to_keep = {f"{submission_id}/metadata/metadata.json", f"{submission_id}/cleaning"}
+        num_deleted = 0
+        for obj in bucket.objects.filter(Prefix=prefix):
+            if obj.key not in keys_to_keep:
+                _ = obj.delete()
+                num_deleted += 1
+        if not num_deleted:
             sys.exit(f"No objects with prefix '{prefix}' in bucket '{bucket_name}' found for deletion.")
 
-        successfully_deleted_keys = []
-        errors_encountered = []
-        objects_found = 0
+        log.info(f"Successfully deleted {num_deleted} objects.")
 
-        # responses is a list of dicts reporting the result of the deletion API call
-        # because the API does things in batches
-        for response in responses:
-            deleted_batch = response.get("Deleted", [])
-            for deleted_obj in deleted_batch:
-                key = deleted_obj.get("Key")
-                if key:
-                    successfully_deleted_keys.append(key)
+        # redact metadata.json since it contains tanG + localCaseId
+        bucket.put_object(Body=b"", Key=f"{submission_id}/metadata/metadata.json")
 
-            errors_batch = response.get("Errors", [])
-            for error_obj in errors_batch:
-                errors_encountered.append(
-                    {
-                        "Key": error_obj.get("Key", "N/A"),
-                        "Code": error_obj.get("Code", "N/A"),
-                        "Message": error_obj.get("Message", "N/A"),
-                    }
-                )
+        # mark that we've cleaned this submission
+        bucket.put_object(Body=b"", Key=f"{submission_id}/cleaned")
+        bucket.Object(f"{submission_id}/cleaning").delete()
 
-            objects_found += len(deleted_batch) + len(errors_batch)
-
-        log.info(f"Total objects attempted to delete: {objects_found}")
-        log.info(f"Successfully deleted: {len(successfully_deleted_keys)} objects.")
-        log.info(f"Failed to delete: {len(errors_encountered)} objects.")
-
-        for error in errors_encountered:
-            log.error(f"  - Key: {error['Key']}, Code: {error['Code']}, Message: {error['Message']}")
-
-        if errors_encountered:
-            sys.exit(f"Errors encountered while deleting objects from bucket '{bucket_name}'. See log for details.")
-
-        log.info(f"Deleted '{prefix}' from '{bucket_name}'.")
+        log.info(f"Cleaned '{prefix}' from '{bucket_name}'.")
