@@ -2,11 +2,19 @@
 Common methods for transferring data to and from GRZ buckets.
 """
 
+from typing import TYPE_CHECKING
+
 import boto3
 from boto3 import client as boto3_client  # type: ignore[import-untyped]
 from botocore.config import Config as Boto3Config  # type: ignore[import-untyped]
-from types_boto3_s3 import S3Client
-from types_boto3_s3.service_resource import S3ServiceResource
+
+if TYPE_CHECKING:
+    from types_boto3_s3 import S3Client
+    from types_boto3_s3.service_resource import S3ServiceResource
+else:
+    # avoid undefined objects when not type checking
+    S3Client = object
+    S3ServiceResource = object
 
 from .models.s3 import S3Options
 
