@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import shutil
 from os import PathLike
 from pathlib import Path
 
@@ -113,7 +114,8 @@ class Worker:
             self.progress_file_checksum_validation.unlink(missing_ok=True)
             self.progress_file_sequencing_data_validation.unlink(missing_ok=True)
 
-        if with_grz_check:
+        have_grz_check = shutil.which("grz-check") is not None
+        if with_grz_check and have_grz_check:
             try:
                 self.__log.info("Starting file validation with `grz-check`...")
                 errors = list(
