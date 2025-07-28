@@ -214,7 +214,7 @@ jobs:
   test-changed-packages-rust:
     name: Test Changed Rust Packages
     needs: [ build-grz-check-binary, determine-changes, quality-checks-rust ]
-    if: needs.determine-changes.outputs.has_rust_changes == 'true'
+    if: ${{ !cancelled() && needs.determine-changes.outputs.has_rust_changes == 'true' }}
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -252,10 +252,7 @@ jobs:
         python-version:
           - "3.12"
           - "3.13"
-    if: |
-      (github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/main')) &&
-      needs.build-grz-check-binary.result == 'success' &&
-      (needs.test-changed-packages-rust.result == 'success' || needs.test-changed-packages-rust.result == 'skipped')
+    if: ${{ !cancelled() && (github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/main')) && needs.build-grz-check-binary.result == 'success' && (needs.test-changed-packages-rust.result == 'success' || needs.test-changed-packages-rust.result == 'skipped') }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -295,10 +292,7 @@ jobs:
   test-changed-packages-python:
     name: Test Changed Python Packages
     needs: [ determine-changes, quality-checks-python, build-grz-check-binary, test-changed-packages-rust ]
-    if: |
-      needs.determine-changes.outputs.has_python_changes == 'true' &&
-      needs.build-grz-check-binary.result == 'success' &&
-      (needs.test-changed-packages-rust.result == 'success' || needs.test-changed-packages-rust.result == 'skipped')
+    if: ${{ !cancelled() && needs.determine-changes.outputs.has_python_changes == 'true' && needs.build-grz-check-binary.result == 'success' && (needs.test-changed-packages-rust.result == 'success' || needs.test-changed-packages-rust.result == 'skipped') }}
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
