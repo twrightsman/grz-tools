@@ -8,7 +8,8 @@ import shutil
 
 import click.testing
 import grzctl
-from grz_pydantic_models.submission.metadata import GrzSubmissionMetadata, Relation
+from grz_common.constants import REDACTED_TAN
+from grz_pydantic_models.submission.metadata import GrzSubmissionMetadata
 
 from .. import mock_files
 
@@ -60,13 +61,12 @@ def test_archive(temp_s3_config_file_path, remote_bucket, working_dir_path, tmp_
         metadata = GrzSubmissionMetadata.model_validate_json(metadata_file.read())
 
         # ensure tanG is redacted
-        assert metadata.submission.tan_g == "".join(["0"] * 64)
+        assert metadata.submission.tan_g == REDACTED_TAN
 
         # ensure local case ID is redacted
         assert not metadata.submission.local_case_id
 
         # ensure index patient donor pseudonym is redacted
-        index_patient = next(donor for donor in metadata.donors if donor.relation == Relation.index_)
-        assert index_patient.donor_pseudonym == "index"
+        assert metadata.index_donor.donor_pseudonym == "index"
 
     assert result.exit_code == 0, result.output

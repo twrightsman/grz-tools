@@ -12,10 +12,7 @@ from grz_common.cli import config_file, output_json, submission_dir
 from grz_common.workers.submission import Submission
 from grz_pydantic_models.pruefbericht import LibraryType as PruefberichtLibraryType
 from grz_pydantic_models.pruefbericht import Pruefbericht, SubmittedCase
-from grz_pydantic_models.submission.metadata.v1 import (
-    GrzSubmissionMetadata,
-    Relation,
-)
+from grz_pydantic_models.submission.metadata.v1 import GrzSubmissionMetadata
 from pydantic_core import to_jsonable_python
 
 from ..models.config import PruefberichtConfig
@@ -62,9 +59,12 @@ def _submit_pruefbericht(base_url: str, token: str, pruefbericht: Pruefbericht):
         response.raise_for_status()
 
 
-def _get_library_type(metadata: GrzSubmissionMetadata) -> PruefberichtLibraryType:
-    # pydantic model ensures one and only one index patient
-    index_patient = next(donor for donor in metadata.donors if donor.relation == Relation.index_)
+def get_pruefbericht_library_type(metadata: GrzSubmissionMetadata) -> PruefberichtLibraryType:
+    """
+    Determine the singular representative library type of a submission to submit with the Prüfbericht.
+    This should be library type of the index patient with the highest reimbursement value.
+    """
+    index_patient = metadata.index_donor
 
     index_patient_submission_library_types = {str(datum.library_type) for datum in index_patient.lab_data}
 
@@ -122,7 +122,7 @@ def pruefbericht(config_file, submission_dir, output_json, failed, token, dry_ru
             dataNodeId=metadata.submission.genomic_data_center_id,
             diseaseType=metadata.submission.disease_type,
             dataCategory="genomic",
-            libraryType=_get_library_type(metadata),
+            libraryType=get_pruefbericht_library_type(metadata),
             coverageType=metadata.submission.coverage_type,
             dataQualityCheckPassed=not failed,
         )

@@ -1,11 +1,20 @@
 import datetime
-import os
 from collections.abc import Generator, Sequence
 from contextlib import contextmanager
-from typing import Any
+from typing import Any, ClassVar
 
 from alembic import command as alembic_command
 from alembic.config import Config as AlembicConfig
+from alembic.runtime.migration import MigrationContext
+from alembic.script import ScriptDirectory as AlembicScriptDirectory
+from grz_pydantic_models.submission.metadata import (
+    DiseaseType,
+    GenomicDataCenterId,
+    LibraryType,
+    SubmissionType,
+    SubmitterId,
+    Tan,
+)
 from pydantic import ConfigDict
 from sqlalchemy import JSON, Column
 from sqlalchemy.exc import IntegrityError
@@ -20,6 +29,10 @@ from ..common import (
 from ..errors import DuplicateSubmissionError, DuplicateTanGError, SubmissionNotFoundError
 from .author import Author
 from .base import BaseSignablePayload, VerifiableLog
+
+
+class OutdatedDatabaseSchemaError(Exception):
+    pass
 
 
 class SubmissionStateEnum(CaseInsensitiveStrEnum, ListableEnum):  # type: ignore[misc]
@@ -50,10 +63,24 @@ class SubmissionBase(SQLModel):
     """Submission base model."""
 
     model_config = ConfigDict(validate_assignment=True)  # type: ignore
+    immutable_fields: ClassVar[set[str]] = {"id"}
 
     id: str
-    tan_g: str | None = Field(default=None, unique=True, index=True, alias="tanG")
+    tan_g: Tan | None = Field(default=None, unique=True, index=True, alias="tanG")
     pseudonym: str | None = Field(default=None, index=True)
+
+    # fields from Prüfbericht
+    submission_date: datetime.date | None = None
+    submission_type: SubmissionType | None = None
+    submitter_id: SubmitterId | None = None
+    data_node_id: GenomicDataCenterId | None = None
+    disease_type: DiseaseType | None = None
+    library_type: LibraryType | None = None
+    basic_qc_passed: bool | None = None
+
+    # fields also for Tätigkeitsbericht
+    consented: bool | None = None
+    detailed_qc_passed: bool | None = None
 
 
 class Submission(SubmissionBase, table=True):
@@ -206,31 +233,38 @@ class SubmissionDb:
         self._author = author
 
     @contextmanager
-    def get_session(self) -> Generator[Session, Any, None]:
+    def _get_session(self) -> Generator[Session, Any, None]:
         """Get an sqlmodel session."""
+        if not self._at_latest_schema():
+            raise OutdatedDatabaseSchemaError(
+                "Database not at latest schema. Please backup the database and then attempt a migration with `grzctl db upgrade`."
+            )
         with Session(self.engine) as session:
             yield session
 
-    def _get_alembic_config(self, alembic_ini_path: str) -> AlembicConfig:
+    def _get_alembic_config(self) -> AlembicConfig:
         """
         Loads the alembic configuration.
 
         Args:
             alembic_ini_path: Path to alembic ini file.
         """
-        if not alembic_ini_path or not os.path.exists(alembic_ini_path):
-            raise ValueError(f"Alembic configuration file not found at: {alembic_ini_path}")
-
-        alembic_cfg = AlembicConfig(alembic_ini_path)
-        alembic_cfg.set_main_option("sqlalchemy.url", str(self.engine.url))
+        alembic_cfg = AlembicConfig()
         alembic_cfg.set_main_option("script_location", "grz_db:migrations")
+        alembic_cfg.set_main_option("sqlalchemy.url", str(self.engine.url))
         return alembic_cfg
+
+    def _at_latest_schema(self) -> bool:
+        directory = AlembicScriptDirectory.from_config(self._get_alembic_config())
+        with self.engine.connect() as connection:
+            context = MigrationContext.configure(connection)
+            return set(context.get_current_heads()) == set(directory.get_heads())
 
     def initialize_schema(self):
         """Initialize the database."""
-        SQLModel.metadata.create_all(self.engine, checkfirst=True)
+        self.upgrade_schema()
 
-    def upgrade_schema(self, alembic_ini_path: str, revision: str = "head"):
+    def upgrade_schema(self, revision: str = "head"):
         """
         Upgrades the database schema using alembic.
 
@@ -241,7 +275,7 @@ class SubmissionDb:
         Raises:
             RuntimeError: For underlying Alembic errors.
         """
-        alembic_cfg = self._get_alembic_config(alembic_ini_path)
+        alembic_cfg = self._get_alembic_config()
         try:
             alembic_command.upgrade(alembic_cfg, revision)
         except Exception as e:
@@ -260,7 +294,7 @@ class SubmissionDb:
         Returns:
             An instance of Submission.
         """
-        with self.get_session() as session:
+        with self._get_session() as session:
             existing_submission = session.get(Submission, submission_id)
             if existing_submission:
                 raise DuplicateSubmissionError(submission_id)
@@ -281,18 +315,14 @@ class SubmissionDb:
                 raise
 
     def modify_submission(self, submission_id: str, key: str, value: str) -> Submission:
-        if key.casefold() in {"tan-g", "tan_g", "tang"}:
-            key = "tan_g"
-        elif key.casefold() in {"pseudonym", "donor-pseudonym", "donor_pseudonym"}:
-            key = "pseudonym"
-        else:
-            raise ValueError("Can only modify tan_g or pseudonym")
+        if key not in SubmissionBase.model_fields:
+            raise ValueError(f"Unknown column key '{key}'")
+        elif key in SubmissionBase.immutable_fields:
+            raise ValueError(f"Column '{key}' is read-only and cannot be modified.")
 
-        with self.get_session() as session:
+        with self._get_session() as session:
             submission = session.get(Submission, submission_id)
-            if submission:
-                pass
-            else:
+            if submission is None:
                 raise SubmissionNotFoundError(submission_id)
 
             setattr(submission, key, value)
@@ -327,7 +357,7 @@ class SubmissionDb:
         Returns:
             An instance of SubmissionStateLog.
         """
-        with self.get_session() as session:
+        with self._get_session() as session:
             submission = session.get(Submission, submission_id)
             if not submission:
                 raise SubmissionNotFoundError(submission_id)
@@ -368,7 +398,7 @@ class SubmissionDb:
         Returns:
             An instance of ChangeRequestLog.
         """
-        with self.get_session() as session:
+        with self._get_session() as session:
             submission = session.get(Submission, submission_id)
             if not submission:
                 raise SubmissionNotFoundError(submission_id)
@@ -404,7 +434,7 @@ class SubmissionDb:
         Returns:
             An instance of Submission or None.
         """
-        with self.get_session() as session:
+        with self._get_session() as session:
             statement = (
                 select(Submission).where(Submission.id == submission_id).options(selectinload(Submission.states))  # type: ignore[arg-type]
             )
@@ -418,7 +448,7 @@ class SubmissionDb:
         Returns:
             A list of all submissions in the database, ordered by their ID.
         """
-        with self.get_session() as session:
+        with self._get_session() as session:
             statement = select(Submission).options(selectinload(Submission.states)).order_by(Submission.id)  # type: ignore[arg-type]
             submissions = session.exec(statement).all()
             return submissions
@@ -430,7 +460,7 @@ class SubmissionDb:
         Returns:
             A list of all submissions in the database, ordered by their ID.
         """
-        with self.get_session() as session:
+        with self._get_session() as session:
             statement = (
                 select(Submission)
                 .where(Submission.changes.any())  # type: ignore[attr-defined]

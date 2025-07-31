@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import re
@@ -1036,6 +1037,24 @@ class GrzSubmissionMetadata(StrictBaseModel):
     List of donors including the index patient.
     """
 
+    @property
+    def submission_id(self) -> str:
+        """
+        A deterministic metadata-derived submission identifier for long-term use within GRZs.
+
+        Uses the first 8 characters of the SHA256 hash of the tanG to virtually prevent collisions.
+        """
+        return "_".join(
+            (
+                self.submission.submitter_id,
+                self.submission.submission_date.isoformat(),
+                hashlib.sha256(self.submission.tan_g.encode("utf-8")).hexdigest()[:8],
+            )
+        )
+
+    def consents_to_research(self, date: date) -> bool:
+        return all(donor.consents_to_research(date) for donor in self.donors)
+
     @field_validator("donors", mode="after")
     @classmethod
     def ensure_single_index_patient(cls, value: list[Donor]) -> list[Donor]:
@@ -1045,6 +1064,12 @@ class GrzSubmissionMetadata(StrictBaseModel):
         elif num_index_patients > 1:
             raise ValueError("Multiple index donors found! Exactly one index donor required.")
         return value
+
+    @property
+    def index_donor(self) -> Donor:
+        """The index patient of the submission."""
+        # note: this is valid because the above field_validator ensures only one index patient
+        return next(donor for donor in self.donors if donor.relation == Relation.index_)
 
     @field_validator("donors", mode="after")
     @classmethod

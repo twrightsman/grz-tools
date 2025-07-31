@@ -6,13 +6,18 @@ import logging
 import sys
 import traceback
 from collections import namedtuple
+from datetime import date
 from typing import Any
 
 import click
 import rich.console
+import rich.padding
+import rich.panel
 import rich.table
+import rich.text
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 from grz_common.cli import config_file, output_json
+from grz_common.constants import REDACTED_TAN
 from grz_db.errors import (
     DatabaseConfigurationError,
     DuplicateSubmissionError,
@@ -29,18 +34,19 @@ from grz_db.models.submission import (
     SubmissionStateEnum,
     SubmissionStateLog,
 )
+from grz_pydantic_models.submission.metadata import GrzSubmissionMetadata, LibraryType
 
 from ..models.config import DbConfig
+from .pruefbericht import get_pruefbericht_library_type
 
 console = rich.console.Console()
+console_err = rich.console.Console(stderr=True)
 log = logging.getLogger(__name__)
+_TEXT_MISSING = rich.text.Text("missing", style="italic yellow")
 
-DATABASE_URL = "sqlite:///test.sqlite"
 
-
-def get_submission_db_instance(db_url: str | None, author: Author | None = None) -> SubmissionDb:
+def get_submission_db_instance(db_url: str, author: Author | None = None) -> SubmissionDb:
     """Creates and returns an instance of SubmissionDb."""
-    db_url = db_url or DATABASE_URL
     return SubmissionDb(db_url=db_url, author=author)
 
 
@@ -65,7 +71,7 @@ def db(ctx: click.Context, config_file: str):
 
     from cryptography.hazmat.primitives.serialization import load_ssh_public_key
 
-    log.info("Reading known public keys")
+    log.debug("Reading known public keys...")
     KnownKeyEntry = namedtuple("KnownKeyEntry", ["key_format", "public_key_base64", "comment"])
     with open(db_config.known_public_keys) as f:
         public_key_list = list(map(lambda v: KnownKeyEntry(*v), map(lambda s: s.strip().split(), f.readlines())))
@@ -93,26 +99,19 @@ def submission(ctx: click.Context):
 @db.command()
 @click.pass_context
 def init(ctx: click.Context):
-    """Initializes or upgrades the database schema using Alembic."""
+    """Initializes the database schema using Alembic."""
     db = ctx.obj["db_url"]
     submission_db = get_submission_db_instance(db, author=ctx.obj["author"])
-    console.print(f"[cyan]Initializing database {db}[/cyan]")
+    console_err.print(f"[cyan]Initializing database {db}[/cyan]")
     submission_db.initialize_schema()
 
 
 @db.command()
 @click.option("--revision", default="head", help="Alembic revision to upgrade to (default: 'head').")
-@click.option(
-    "--alembic-ini",
-    type=click.Path(exists=True, dir_okay=False, resolve_path=True),
-    default="alembic.ini",
-    help="Override path to alembic.ini file.",
-)
 @click.pass_context
 def upgrade(
     ctx: click.Context,
     revision: str,
-    alembic_ini: str,
 ):
     """
     Upgrades the database schema using Alembic.
@@ -120,27 +119,22 @@ def upgrade(
     db = ctx.obj["db_url"]
     submission_db = get_submission_db_instance(db, author=ctx.obj["author"])
 
-    console.print(f"[cyan]Using alembic configuration: {alembic_ini}[/cyan]")
-
     try:
-        console.print(f"[cyan]Attempting to upgrade database to revision: {revision}...[/cyan]")
-        _ = submission_db.upgrade_schema(
-            alembic_ini_path=alembic_ini,
-            revision=revision,
-        )
+        revision_desc = "latest revision" if revision == "head" else f"revision '{revision}'"
+        console_err.print(f"[cyan]Attempting to upgrade database to {revision_desc}...[/cyan]")
+        _ = submission_db.upgrade_schema(revision=revision)
+        console_err.print(f"[green]Successfully upgraded database to {revision_desc}![/green]")
 
     except (DatabaseConfigurationError, RuntimeError) as e:
-        console.print(f"[red]Error during schema initialization: {e}[/red]")
+        console_err.print(f"[red]Error during schema initialization: {e}[/red]")
         if isinstance(e, RuntimeError):
-            console.print(
-                "[yellow]Ensure your database is running and accessible, and alembic.ini is configured correctly.[/yellow]"
-            )
-            console.print(
+            console_err.print("[yellow]Ensure your database is running and accessible.[/yellow]")
+            console_err.print(
                 "[yellow]You might need to create an initial migration if this is the first time: 'alembic revision -m \"initial\" --autogenerate'[/yellow]"
             )
         raise click.ClickException(str(e)) from e
     except Exception as e:
-        console.print(f"[red]An unexpected error occurred during 'db init': {type(e).__name__} - {e}[/red]")
+        console_err.print(f"[red]An unexpected error occurred during 'db upgrade': {type(e).__name__} - {e}[/red]")
         raise click.ClickException(str(e)) from e
 
 
@@ -151,10 +145,14 @@ def list_submissions(ctx: click.Context, output_json: bool = False):
     """Lists all submissions in the database with their latest state."""
     db = ctx.obj["db_url"]
     db_service = get_submission_db_instance(db)
-    submissions = db_service.list_submissions()
+
+    try:
+        submissions = db_service.list_submissions()
+    except Exception as e:
+        raise click.ClickException(str(e)) from e
 
     if not submissions:
-        console.print("[yellow]No submissions found in the database.[/yellow]")
+        console_err.print("[yellow]No submissions found in the database.[/yellow]")
         return
 
     table = rich.table.Table(title="All Submissions")
@@ -197,8 +195,8 @@ def list_submissions(ctx: click.Context, output_json: bool = False):
         else:
             table.add_row(
                 submission.id,
-                submission.tan_g if submission.tan_g is not None else "N/A",
-                submission.pseudonym if submission.pseudonym is not None else "N/A",
+                submission.tan_g[:8] + "…" if submission.tan_g is not None else _TEXT_MISSING,
+                submission.pseudonym if submission.pseudonym is not None else _TEXT_MISSING,
                 latest_state_str,
                 latest_timestamp_str,
                 author_name_str,
@@ -221,7 +219,7 @@ def list_change_requests(ctx: click.Context, output_json: bool = False):
     submissions = db_service.list_change_requests()
 
     if not submissions:
-        console.print("[yellow]No submissions found in the database.[/yellow]")
+        console_err.print("[yellow]No submissions found in the database.[/yellow]")
         return
 
     table = rich.table.Table(title="Submissions with change requests")
@@ -257,8 +255,8 @@ def list_change_requests(ctx: click.Context, output_json: bool = False):
             else:
                 table.add_row(
                     submission.id,
-                    submission.tan_g if submission.tan_g is not None else "N/A",
-                    submission.pseudonym if submission.pseudonym is not None else "N/A",
+                    submission.tan_g[:8] + "…" if submission.tan_g is not None else _TEXT_MISSING,
+                    submission.pseudonym if submission.pseudonym is not None else _TEXT_MISSING,
                     latest_change_str,
                     latest_timestamp_str,
                     author_name_str,
@@ -365,12 +363,12 @@ def add(ctx: click.Context, submission_id: str):
     db_service = get_submission_db_instance(db)
     try:
         db_submission = db_service.add_submission(submission_id)
-        console.print(f"[green]Submission '{db_submission.id}' added successfully.[/green]")
+        console_err.print(f"[green]Submission '{db_submission.id}' added successfully.[/green]")
     except (DuplicateSubmissionError, DuplicateTanGError) as e:
-        console.print(f"[red]Error: {e}[/red]")
+        console_err.print(f"[red]Error: {e}[/red]")
         raise click.Abort() from e
     except Exception as e:
-        console.print(f"[red]An unexpected error occurred: {e}[/red]")
+        console_err.print(f"[red]An unexpected error occurred: {e}[/red]")
         raise click.ClickException(f"Failed to add submission: {e}") from e
 
 
@@ -386,7 +384,7 @@ def update(ctx: click.Context, submission_id: str, state_str: str, data_json: st
     try:
         state_enum = SubmissionStateEnum(state_str)
     except ValueError as e:
-        console.print(f"[red]Error: Invalid state value '{state_str}'.[/red]")
+        console_err.print(f"[red]Error: Invalid state value '{state_str}'.[/red]")
         raise click.Abort() from e
 
     parsed_data = None
@@ -394,33 +392,38 @@ def update(ctx: click.Context, submission_id: str, state_str: str, data_json: st
         try:
             parsed_data = json.loads(data_json)
         except json.JSONDecodeError as e:
-            console.print(f"[red]Error: Invalid JSON string for --data: {data_json}[/red]")
+            console_err.print(f"[red]Error: Invalid JSON string for --data: {data_json}[/red]")
             raise click.Abort() from e
     try:
         new_state_log = db_service.update_submission_state(submission_id, state_enum, parsed_data)
-        console.print(
+        console_err.print(
             f"[green]Submission '{submission_id}' updated to state '{new_state_log.state.value}'. Log ID: {new_state_log.id}[/green]"
         )
         if new_state_log.data:
-            console.print(f"  Data: {new_state_log.data}")
+            console_err.print(f"  Data: {new_state_log.data}")
 
     except SubmissionNotFoundError as e:
-        console.print(f"[red]Error: {e}[/red]")
-        console.print(f"You might need to add it first: grz-cli db add-submission {submission_id}")
+        console_err.print(f"[red]Error: {e}[/red]")
+        console_err.print(f"You might need to add it first: grz-cli db submission add {submission_id}")
         raise click.Abort() from e
     except Exception as e:
-        console.print(f"[red]An unexpected error occurred: {e}[/red]")
+        console_err.print(f"[red]An unexpected error occurred: {e}[/red]")
         traceback.print_exc()
         raise click.ClickException(f"Failed to update submission state: {e}") from e
 
 
-@submission.command()
+@submission.command(
+    epilog="Currently available KEYs are: "
+    + ", ".join(sorted(Submission.model_fields.keys() - Submission.immutable_fields))
+)
 @click.argument("submission_id", type=str)
-@click.argument("key", metavar="KEY", type=click.Choice(["tanG", "pseudonym"], case_sensitive=False))
+@click.argument("key", metavar="KEY", type=click.Choice(Submission.model_fields.keys()))
 @click.argument("value", metavar="VALUE", type=str)
 @click.pass_context
 def modify(ctx: click.Context, submission_id: str, key: str, value: str):
-    """Modify a submission's tanG or index donor pseudonym."""
+    """
+    Modify a submission's database properties.
+    """
     db = ctx.obj["db_url"]
     db_service = get_submission_db_instance(db, author=ctx.obj["author"])
 
@@ -429,16 +432,121 @@ def modify(ctx: click.Context, submission_id: str, key: str, value: str):
         if not submission:
             raise SubmissionNotFoundError(submission_id)
         _ = db_service.modify_submission(submission_id, key, value)
-        console.print(f"[green]Updated {key} of submission '{submission_id}'[/green]")
-
+        console_err.print(f"[green]Updated {key} of submission '{submission_id}'[/green]")
     except SubmissionNotFoundError as e:
-        console.print(f"[red]Error: {e}[/red]")
-        console.print(f"You might need to add it first: grz-cli db add-submission {submission_id}")
+        console_err.print(f"[red]Error: {e}[/red]")
+        console_err.print(f"You might need to add it first: grz-cli db submission add {submission_id}")
         raise click.Abort() from e
     except Exception as e:
-        console.print(f"[red]An unexpected error occurred: {e}[/red]")
+        console_err.print(f"[red]An unexpected error occurred: {e}[/red]")
         traceback.print_exc()
         raise click.ClickException(f"Failed to update submission state: {e}") from e
+
+
+def _diff_metadata(
+    submission: Submission, metadata: GrzSubmissionMetadata, ignore_fields: set[str]
+) -> list[tuple[str, Any, Any]]:
+    """Given a database submission and a metadata.json file, report changed fields and their before/after values if they are not in ignore_fields."""
+    changes = []
+
+    simple_fields = {"tan_g", "submission_date", "submission_type", "submitter_id", "disease_type"}
+
+    for field in simple_fields - ignore_fields:
+        if field == "tan_g" and metadata.submission.tan_g == REDACTED_TAN:
+            raise ValueError(
+                "Refusing to populate a seemingly-redacted TAN (all zeros). "
+                "Add 'tan_g' to --ignore-field or use 'grzctl db submission modify' directly."
+            )
+        submission_attr = getattr(submission, field)
+        metadata_attr = getattr(metadata.submission, field)
+        if submission_attr != metadata_attr:
+            changes.append((field, submission_attr, metadata_attr))
+
+    # pseudonym (TODO: change after phase 0)
+    if "pseudonym" not in ignore_fields and (submission.pseudonym != metadata.submission.local_case_id):
+        if not metadata.submission.local_case_id:
+            raise ValueError(
+                "Refusing to populate a seemingly-redacted local case ID (empty). "
+                "Add 'pseudonym' to --ignore-field or use 'grzctl db submission modify' directly."
+            )
+        changes.append(("pseudonym", submission.pseudonym, metadata.submission.local_case_id))
+
+    # data node id
+    if "data_node_id" not in ignore_fields and (submission.data_node_id != metadata.submission.genomic_data_center_id):
+        changes.append(("data_node_id", submission.data_node_id, metadata.submission.genomic_data_center_id))
+
+    # library type
+    metadata_library_type = LibraryType(get_pruefbericht_library_type(metadata))
+    if "library_type" not in ignore_fields and (submission.library_type != metadata_library_type):
+        changes.append(("library_type", submission.library_type, metadata_library_type))
+
+    # consent state
+    consented = metadata.consents_to_research(date=date.today())
+    if submission.consented != consented:
+        changes.append(("consented", submission.consented, consented))
+
+    return changes
+
+
+@submission.command()
+@click.argument("submission_id", type=str)
+@click.argument("metadata_path", metavar="path/to/metadata.json", type=str)
+@click.option(
+    "--confirm/--no-confirm",
+    default=True,
+    help="Whether to confirm changes before committing to database. (Default: confirm)",
+)
+@click.option(
+    "--ignore-field",
+    help="Do not populate the given key from the metadata to the database. Can be specified multiple times to ignore multiple keys.",
+    multiple=True,
+)
+@click.pass_context
+def populate(ctx: click.Context, submission_id: str, metadata_path: str, confirm: bool, ignore_field: list[str]):
+    """Populate the submission database from a metadata JSON file."""
+    log.debug(f"Ignored fields for populate: {ignore_field}")
+
+    db = ctx.obj["db_url"]
+    db_service = get_submission_db_instance(db, author=ctx.obj["author"])
+
+    try:
+        submission = db_service.get_submission(submission_id)
+        if not submission:
+            raise SubmissionNotFoundError(submission_id)
+    except SubmissionNotFoundError as e:
+        console_err.print(f"[red]Error: {e}[/red]")
+        console_err.print(f"You might need to add it first: grz-cli db submission add {submission_id}")
+        raise click.Abort() from e
+    except Exception as e:
+        console_err.print(f"[red]An unexpected error occurred: {e}[/red]")
+        traceback.print_exc()
+        raise click.ClickException(f"Failed to update submission state: {e}") from e
+
+    with open(metadata_path) as metadata_file:
+        metadata = GrzSubmissionMetadata.model_validate_json(metadata_file.read())
+
+    changes = _diff_metadata(submission, metadata, set(ignore_field))
+    if not changes:
+        console_err.print("[green]Database is already up to date with the provided metadata![/green]")
+        ctx.exit()
+
+    diff_table = rich.table.Table()
+    diff_table.add_column("Key")
+    diff_table.add_column("Before")
+    diff_table.add_column("After")
+    for key, before, after in changes:
+        diff_table.add_row(key, str(before) if before is not None else _TEXT_MISSING, str(after))
+    panel = rich.panel.Panel.fit(diff_table, title="Pending Changes")
+    console.print(panel)
+
+    if not confirm or click.confirm(
+        "Are you sure you want to commit these changes to the database?",
+        default=False,
+        show_default=True,
+    ):
+        for key, _before, after in changes:
+            _ = db_service.modify_submission(submission_id, key=key, value=after)
+        console_err.print("[green]Database populated successfully.[/green]")
 
 
 @submission.command()
@@ -453,7 +561,7 @@ def change_request(ctx: click.Context, submission_id: str, change_str: str, data
     try:
         change_request_enum = ChangeRequestEnum(change_str)
     except ValueError as e:
-        console.print(f"[red]Error: Invalid change request value '{change_str}'.[/red]")
+        console_err.print(f"[red]Error: Invalid change request value '{change_str}'.[/red]")
         raise click.Abort() from e
 
     parsed_data = None
@@ -461,22 +569,22 @@ def change_request(ctx: click.Context, submission_id: str, change_str: str, data
         try:
             parsed_data = json.loads(data_json)
         except json.JSONDecodeError as e:
-            console.print(f"[red]Error: Invalid JSON string for --data: {data_json}[/red]")
+            console_err.print(f"[red]Error: Invalid JSON string for --data: {data_json}[/red]")
             raise click.Abort() from e
     try:
         new_change_request_log = db_service.add_change_request(submission_id, change_request_enum, parsed_data)
-        console.print(
+        console_err.print(
             f"[green]Submission '{submission_id}' has undergone a change request of '{new_change_request_log.change.value}'. Log ID: {new_change_request_log.id}[/green]"
         )
         if new_change_request_log.data:
-            console.print(f"  Data: {new_change_request_log.data}")
+            console_err.print(f"  Data: {new_change_request_log.data}")
 
     except SubmissionNotFoundError as e:
-        console.print(f"[red]Error: {e}[/red]")
-        console.print(f"You might need to add it first: grz-cli db add-submission {submission_id}")
+        console_err.print(f"[red]Error: {e}[/red]")
+        console_err.print(f"You might need to add it first: grz-cli db submission add {submission_id}")
         raise click.Abort() from e
     except Exception as e:
-        console.print(f"[red]An unexpected error occurred: {e}[/red]")
+        console_err.print(f"[red]An unexpected error occurred: {e}[/red]")
         traceback.print_exc()
         raise click.ClickException(f"Failed to update submission state: {e}") from e
 
@@ -492,21 +600,39 @@ def show(ctx: click.Context, submission_id: str):
     db_service = get_submission_db_instance(db)
     submission = db_service.get_submission(submission_id)
     if not submission:
-        console.print(f"[red]Error: Submission with ID '{submission_id}' not found.[/red]")
+        console_err.print(f"[red]Error: Submission with ID '{submission_id}' not found.[/red]")
         raise click.Abort()
 
-    console.print(f"\n[bold blue]Submission Details for ID: {submission.id}[/bold blue]")
-    console.print(f"  tanG: {submission.tan_g if submission.tan_g is not None else 'N/A'}")
-    console.print(f"  Pseudonym: {submission.pseudonym if submission.pseudonym is not None else 'N/A'}")
+    attribute_table = rich.table.Table(box=None)
+    attribute_table.add_column("Attribute", justify="right")
+    attribute_table.add_column("Value")
+    for label, attr_name in (
+        ("tanG", "tan_g"),
+        ("Pseudonym", "pseudonym"),
+        ("Submission Date", "submission_date"),
+        ("Submission Type", "submission_type"),
+        ("Submitter ID", "submitter_id"),
+        ("Data Node ID", "data_node_id"),
+        ("Disease Type", "disease_type"),
+        ("Library Type", "library_type"),
+        ("Basic QC Passed", "basic_qc_passed"),
+        ("Consented", "consented"),
+        ("Detailed QC Passed", "detailed_qc_passed"),
+    ):
+        attr = getattr(submission, attr_name)
+        attribute_table.add_row(
+            rich.text.Text(f"{label}", style="cyan"), rich.text.Text(str(attr)) if attr is not None else _TEXT_MISSING
+        )
 
+    renderables: list[rich.console.RenderableType] = [rich.padding.Padding(attribute_table, (1, 0))]
     if submission.states:
-        table = rich.table.Table(title=f"State History for Submission {submission.id}")
-        table.add_column("Log ID", style="dim", width=12)
-        table.add_column("Timestamp (UTC)", style="yellow")
-        table.add_column("State", style="green")
-        table.add_column("Data", style="cyan", overflow="ellipsis")
-        table.add_column("Data Steward", style="magenta")
-        table.add_column("Signature Status")
+        state_table = rich.table.Table(title="State History")
+        state_table.add_column("Log ID", style="dim", width=12)
+        state_table.add_column("Timestamp (UTC)", style="yellow")
+        state_table.add_column("State", style="green")
+        state_table.add_column("Data", style="cyan", overflow="ellipsis")
+        state_table.add_column("Data Steward", style="magenta")
+        state_table.add_column("Signature Status")
 
         sorted_states = sorted(submission.states, key=lambda s: s.timestamp)
         for state_log in sorted_states:
@@ -519,7 +645,7 @@ def show(ctx: click.Context, submission_id: str):
             )
             signature_status_str = signature_status.rich_display(verifying_key_comment)
 
-            table.add_row(
+            state_table.add_row(
                 str(state_log.id),
                 state_log.timestamp.isoformat(),
                 state_str,
@@ -527,6 +653,12 @@ def show(ctx: click.Context, submission_id: str):
                 data_steward_str,
                 signature_status_str,
             )
-        console.print(table)
+        renderables.append(state_table)
     else:
-        console.print("[yellow]No state history found for this submission.[/yellow]")
+        renderables.append(rich.text.Text("No state history found for this submission.", style="yellow"))
+
+    panel = rich.panel.Panel.fit(
+        rich.console.Group(*renderables),
+        title=f"Submission {submission.id}",
+    )
+    console.print(panel)
