@@ -1,7 +1,7 @@
 import datetime
 from collections.abc import Generator, Sequence
 from contextlib import contextmanager
-from typing import Any, ClassVar
+from typing import Annotated, Any, ClassVar
 
 from alembic import command as alembic_command
 from alembic.config import Config as AlembicConfig
@@ -15,7 +15,7 @@ from grz_pydantic_models.submission.metadata import (
     SubmitterId,
     Tan,
 )
-from pydantic import ConfigDict
+from pydantic import ConfigDict, StringConstraints
 from sqlalchemy import JSON, Column
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import selectinload
@@ -88,7 +88,9 @@ class Submission(SubmissionBase, table=True):
 
     __tablename__ = "submissions"
 
-    id: str = Field(primary_key=True, index=True)
+    id: Annotated[str, StringConstraints(pattern=r"^[0-9]{9}_\d{4}-\d{2}-\d{2}_[a-f0-9]{8}$")] = Field(
+        primary_key=True, index=True
+    )
 
     states: list["SubmissionStateLog"] = Relationship(back_populates="submission")
 
