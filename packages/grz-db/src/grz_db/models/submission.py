@@ -1,7 +1,8 @@
 import datetime
 from collections.abc import Generator, Sequence
 from contextlib import contextmanager
-from typing import Annotated, Any, ClassVar
+from operator import attrgetter
+from typing import Annotated, Any, ClassVar, Optional
 
 from alembic import command as alembic_command
 from alembic.config import Config as AlembicConfig
@@ -95,6 +96,11 @@ class Submission(SubmissionBase, table=True):
     states: list["SubmissionStateLog"] = Relationship(back_populates="submission")
 
     changes: list["ChangeRequestLog"] = Relationship(back_populates="submission")
+
+    def get_latest_state(self, filter_to_type: SubmissionStateEnum | None = None) -> Optional["SubmissionStateLog"]:
+        states = filter(lambda state: state.state == filter_to_type, self.states) if filter_to_type else self.states
+        states = sorted(states, key=attrgetter("timestamp"))
+        return states[-1] if states else None
 
 
 class SubmissionStateLogBase(SQLModel):
@@ -452,6 +458,27 @@ class SubmissionDb:
         """
         with self._get_session() as session:
             statement = select(Submission).options(selectinload(Submission.states)).order_by(Submission.id)  # type: ignore[arg-type]
+            submissions = session.exec(statement).all()
+            return submissions
+
+    def list_processed_between(self, start: datetime.date, end: datetime.date) -> Sequence[Submission]:
+        """
+        Lists all submissions processed between the given start and end dates, inclusive.
+        Processed is defined as either reported (Prüfbericht submitted) or detailed QC finished.
+        """
+        with self._get_session() as session:
+            reported_within_window = (
+                select(SubmissionStateLog.submission_id)
+                .where(SubmissionStateLog.state.in_([SubmissionStateEnum.REPORTED, SubmissionStateEnum.QCED]))  # type: ignore[attr-defined]
+                .where(SubmissionStateLog.timestamp.between(start, end))  # type: ignore[attr-defined]
+                .subquery()
+            )
+            statement = (
+                select(Submission)
+                .options(selectinload(Submission.states))  # type: ignore[arg-type]
+                .join(reported_within_window, Submission.id == reported_within_window.c.submission_id)  # type: ignore[arg-type]
+                .distinct()
+            )
             submissions = session.exec(statement).all()
             return submissions
 
