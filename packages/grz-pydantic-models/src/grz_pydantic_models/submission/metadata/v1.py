@@ -1021,6 +1021,19 @@ class Donor(StrictBaseModel):
 
         return self
 
+    @model_validator(mode="after")
+    def ensure_index_has_dna_data(self):
+        # index donors must have a known DNA library type submittable in a Prüfbericht
+        pruefbericht_library_types = {"panel", "wes", "wgs", "wgs_lr"}
+        donor_library_types = {datum.library_type for datum in self.lab_data}
+        if self.relation == Relation.index_ and not (donor_library_types & pruefbericht_library_types):
+            raise ValueError(
+                "Index donor must have at least one lab datum with one of the following library types: "
+                f"{', '.join(pruefbericht_library_types)}."
+            )
+
+        return self
+
 
 class GrzSubmissionMetadata(StrictBaseModel):
     """
