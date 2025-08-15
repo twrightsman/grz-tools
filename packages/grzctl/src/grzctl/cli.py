@@ -4,7 +4,10 @@ CLI module for handling command-line interface operations for GRZ administrators
 
 import logging
 import logging.config
+import shutil
+import subprocess
 from importlib.metadata import version
+from textwrap import dedent
 
 import click
 from grz_cli.commands.encrypt import encrypt
@@ -48,7 +51,18 @@ def build_cli():
     @click.version_option(
         version=version("grzctl"),
         prog_name="grzctl",
-        message="%(prog)s v%(version)s",
+        message=dedent(f"""\
+        %(prog)s v%(version)s
+        grz-cli v{version("grz-cli")}
+        grz-common v{version("grz-common")}
+        grz-db v{version("grz-db")}
+        grz-pydantic-models v{version("grz-pydantic-models")}
+        """)
+        + (
+            subprocess.run(["grz-check", "--version"], capture_output=True, text=True).stdout.strip()  # noqa: S603, S607
+            if shutil.which("grz-check") is not None
+            else ""
+        ),
     )
     @click.option("--log-file", metavar="FILE", type=str, help="Path to log file")
     @click.option(
