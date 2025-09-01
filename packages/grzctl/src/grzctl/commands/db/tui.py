@@ -18,6 +18,8 @@ from textual.containers import HorizontalScroll
 from textual.validation import Number, Regex
 from textual.widgets import DataTable, Footer, Input, Static, TabbedContent, TabPane
 
+from . import _verify_signature
+
 logger = logging.getLogger(__name__)
 _DEFAULT_SEARCH_LIMIT = 20
 
@@ -228,7 +230,7 @@ class DatabaseBrowser(App):
         for table in self.query(DataTable):
             table.loading = True
         table_states_latest = self.query_exactly_one("#table-states-latest")
-        table_states_latest.add_columns("Timestamp", "State", "Submission ID", "Steward")
+        table_states_latest.add_columns("Timestamp", "State", "Submission ID", "Steward", "Signature")
         table_states_latest.cursor_type = "row"
         self.action_refresh()
 
@@ -246,7 +248,14 @@ class DatabaseBrowser(App):
             latest_states = session.exec(statement).all()
         table_states_latest.clear()
         for state in latest_states:
-            table_states_latest.add_row(state.timestamp, state.state, state.submission_id, state.author_name)
+            signature_status, verifying_key_comment = _verify_signature(self._public_keys, state.author_name, state)
+            table_states_latest.add_row(
+                state.timestamp,
+                state.state,
+                state.submission_id,
+                state.author_name,
+                signature_status.rich_display(verifying_key_comment),
+            )
         table_states_latest.loading = False
 
     @textual.on(Input.Submitted)
