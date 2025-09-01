@@ -14,8 +14,10 @@ import rich.padding
 import rich.panel
 import rich.table
 import rich.text
+import textual.logging
 from grz_common.cli import config_file, output_json
 from grz_common.constants import REDACTED_TAN
+from grz_common.logging import LOGGING_DATEFMT, LOGGING_FORMAT
 from grz_db.errors import (
     DatabaseConfigurationError,
     DuplicateSubmissionError,
@@ -277,6 +279,18 @@ def tui(ctx: click.Context):
     db_url = ctx.obj["db_url"]
     public_keys = ctx.obj["public_keys"]
     database = get_submission_db_instance(db_url)
+
+    # Prevent log messages from writing to stderr and messing up TUI. Since the
+    # TUI is pretty much its own CLI context, it's fine to override the global
+    # logging behavior here. TextualHandler() will make sure to still write log
+    # messages visible to devtools.
+    root_logger = logging.getLogger()
+    for handler in root_logger.handlers:
+        root_logger.removeHandler(handler)
+    textual_handler = textual.logging.TextualHandler()
+    # handlers define the format, so make sure Textual knows our project format
+    textual_handler.setFormatter(logging.Formatter(fmt=LOGGING_FORMAT, datefmt=LOGGING_DATEFMT))
+    root_logger.addHandler(textual_handler)
 
     app = DatabaseBrowser(database=database, public_keys=public_keys)
     app.run()

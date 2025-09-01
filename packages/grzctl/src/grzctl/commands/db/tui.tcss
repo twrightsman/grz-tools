@@ -1,3 +1,0 @@
-#pane-overview > HorizontalScroll > Static {
-  width: 50;
-}
