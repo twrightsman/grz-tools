@@ -11,6 +11,7 @@ from cryptography.hazmat.primitives.serialization import SSHPublicKeyTypes
 from grz_db.models.submission import Submission, SubmissionDb, SubmissionStateLog
 from grz_pydantic_models.submission.metadata import SubmissionType
 from sqlalchemy import func as sqlfn
+from sqlalchemy.orm import selectinload
 from sqlmodel import select
 from textual.app import App, ComposeResult
 from textual.binding import Binding
@@ -142,7 +143,8 @@ class SubmissionCountByDetailedQCByLETable(Static):
 class SearchResultsDataTable(DataTable):
     def on_mount(self) -> None:
         self.loading = True
-        self.add_columns("Submission ID", "Pseudonym")
+        self.cursor_type = "row"
+        self.add_columns("Submission ID", "Pseudonym", "Latest State", "State Timestamp (UTC)")
 
     @textual.work
     async def search(
@@ -156,20 +158,39 @@ class SearchResultsDataTable(DataTable):
         self.loading = True
         self.clear()
         with database._get_session() as session:
-            statement = select(Submission.id, Submission.pseudonym)
+            latest_state_per_submission = (
+                select(
+                    SubmissionStateLog.submission_id.label("submission_id"),  # type: ignore[attr-defined]
+                    sqlfn.max(SubmissionStateLog.timestamp).label("timestamp"),
+                )
+                .group_by(SubmissionStateLog.submission_id)
+                .subquery("latest_state_per_submission")
+            )
+            statement = (
+                select(Submission).options(selectinload(Submission.states))  # type: ignore[arg-type]
+            )
             if submission_id:
                 statement = statement.where(Submission.id == submission_id)
             if pseudonym:
                 statement = statement.where(Submission.pseudonym == pseudonym)
             if submitter_id:
                 statement = statement.where(Submission.submitter_id == submitter_id)
+            statement = statement.join(
+                latest_state_per_submission,
+                Submission.id == latest_state_per_submission.c.submission_id,  # type: ignore[arg-type]
+                isouter=True,
+            ).order_by(
+                sqlfn.coalesce(latest_state_per_submission.c.timestamp, Submission.submission_date).desc().nulls_first()
+            )
             if isinstance(limit, int) and limit >= 0:
                 statement = statement.limit(limit)
             else:
                 raise ValueError("limit must be >=0")
-            results = session.exec(statement).all()
+            submissions = session.exec(statement).all()
         logger.debug("Populating search table from the following statement: '%s'", str(statement))
-        self.add_rows(results)
+        for submission in submissions:
+            latest_state = max(submission.states, key=lambda st: st.timestamp)
+            self.add_row(submission.id, submission.pseudonym, latest_state.state, latest_state.timestamp)
 
         self.loading = False
 
