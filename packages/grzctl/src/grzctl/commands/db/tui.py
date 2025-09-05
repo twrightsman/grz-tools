@@ -8,7 +8,7 @@ import rich.table
 import rich.text
 import sqlalchemy.orm
 import textual
-from cryptography.hazmat.primitives.serialization import SSHPublicKeyTypes
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 from grz_db.models.submission import Submission, SubmissionDb, SubmissionStateLog
 from grz_pydantic_models.submission.metadata import SubmissionType
 from sqlalchemy import func as sqlfn
@@ -42,11 +42,13 @@ class SubmissionCountByStateTable(Static):
             log2 = sqlalchemy.orm.aliased(SubmissionStateLog, name="log2")
 
             statement = (
-                select(log1.state, sqlfn.count(log1.state))
+                select(log1.state, sqlfn.count(log1.state))  # type: ignore[arg-type]
                 .join(
-                    log2, (log1.submission_id == log2.submission_id) & (log1.timestamp < log2.timestamp), isouter=True
+                    log2,
+                    (log1.submission_id == log2.submission_id) & (log1.timestamp < log2.timestamp),
+                    isouter=True,  # type: ignore[arg-type]
                 )
-                .where(log2.timestamp.is_(None))
+                .where(log2.timestamp.is_(None))  # type: ignore[attr-defined]
                 .group_by(log1.state)
             )
 
@@ -78,7 +80,7 @@ class SubmissionCountByConsentTable(Static):
     async def load(self, database: SubmissionDb) -> None:
         self.loading = True
         with database._get_session() as session:
-            statement = select(Submission.consented, sqlfn.count(Submission.consented)).group_by(Submission.consented)
+            statement = select(Submission.consented, sqlfn.count(Submission.consented)).group_by(Submission.consented)  # type: ignore[arg-type]
             counts_by_consent = session.exec(statement).all()
 
         table = rich.table.Table(
@@ -103,14 +105,14 @@ class SubmissionCountByDetailedQCByLETable(Static):
         self.loading = True
         with database._get_session() as session:
             statement = (
-                select(
+                select(  # type: ignore[type-var]
                     Submission.submitter_id,
                     Submission.submission_date,
                     Submission.detailed_qc_passed,
-                    sqlfn.count(Submission.submitter_id),  # can't count detailed_qc_pass because NULLs are not counted
+                    sqlfn.count(Submission.submitter_id),  # type: ignore[arg-type] # can't count detailed_qc_pass because NULLs are not counted
                 )
                 .where(Submission.submission_type != SubmissionType.test)
-                .group_by(Submission.submitter_id, Submission.detailed_qc_passed)
+                .group_by(Submission.submitter_id, Submission.detailed_qc_passed)  # type: ignore[arg-type]
             )
             counts_by_pass_by_le = session.exec(statement).all()
 
@@ -132,7 +134,11 @@ class SubmissionCountByDetailedQCByLETable(Static):
                 if detailed_qc_passed is not None:
                     qced += count
                 # current quarter
-                if (submission_date.year == today.year) and (quarter_start <= submission_date <= quarter_end):
+                if (
+                    (submission_date is not None)
+                    and (submission_date.year == today.year)
+                    and (quarter_start <= submission_date <= quarter_end)
+                ):
                     if detailed_qc_passed is not None:
                         qced_quarter += count
                     total_quarter += count
@@ -239,7 +245,7 @@ class DatabaseBrowser(App):
     ]
     CSS_PATH = "tui.css"
 
-    def __init__(self, database: SubmissionDb, public_keys: dict[str, SSHPublicKeyTypes], **kwargs) -> None:
+    def __init__(self, database: SubmissionDb, public_keys: dict[str, Ed25519PublicKey], **kwargs) -> None:
         super().__init__(**kwargs)
         self._database = database
         self._public_keys = public_keys
@@ -265,7 +271,7 @@ class DatabaseBrowser(App):
                     yield input_id
                     input_pseudonym = Input(id="search-input-pseudonym", placeholder="CASE12345")
                     input_pseudonym.border_title = "Pseudonym"
-                    input_pseudonym.validate(input_pseudonym)
+                    input_pseudonym.validate(input_pseudonym.value)
                     yield input_pseudonym
                     input_submitter = Input(
                         id="search-input-submitter", placeholder="123456789", validators=[Regex(r"^[0-9]{9}$")]
@@ -285,7 +291,7 @@ class DatabaseBrowser(App):
     def on_mount(self) -> None:
         for table in self.query(DataTable):
             table.loading = True
-        table_states_latest = self.query_exactly_one("#table-states-latest")
+        table_states_latest = self.query_exactly_one("#table-states-latest", DataTable)
         table_states_latest.add_columns("Timestamp", "State", "Submission ID", "Steward", "Signature")
         table_states_latest.cursor_type = "row"
         self.action_refresh()
@@ -295,11 +301,11 @@ class DatabaseBrowser(App):
         self.query_exactly_one(SubmissionCountByStateTable).load(self._database)
         self.query_exactly_one(SubmissionCountByConsentTable).load(self._database)
         self.query_exactly_one(SubmissionCountByDetailedQCByLETable).load(self._database)
-        table_states_latest = self.query_exactly_one("#table-states-latest")
+        table_states_latest = self.query_exactly_one("#table-states-latest", DataTable)
         table_states_latest.loading = True
         with self._database._get_session() as session:
             statement = (
-                select(SubmissionStateLog).order_by(SubmissionStateLog.timestamp.desc()).limit(_DEFAULT_SEARCH_LIMIT)
+                select(SubmissionStateLog).order_by(SubmissionStateLog.timestamp.desc()).limit(_DEFAULT_SEARCH_LIMIT)  # type: ignore[attr-defined]
             )
             latest_states = session.exec(statement).all()
         table_states_latest.clear()
@@ -320,16 +326,16 @@ class DatabaseBrowser(App):
 
     @textual.work
     async def _refresh_search(self) -> None:
-        input_id = self.query_exactly_one("#search-input-id")
+        input_id = self.query_exactly_one("#search-input-id", Input)
         submission_id = input_id.value if input_id.is_valid else None
 
-        input_pseudonym = self.query_exactly_one("#search-input-pseudonym")
+        input_pseudonym = self.query_exactly_one("#search-input-pseudonym", Input)
         pseudonym = input_pseudonym.value if input_pseudonym.is_valid else None
 
-        input_submitter = self.query_exactly_one("#search-input-submitter")
+        input_submitter = self.query_exactly_one("#search-input-submitter", Input)
         submitter = input_submitter.value if input_submitter.is_valid else None
 
-        input_limit = self.query_exactly_one("#search-input-limit")
+        input_limit = self.query_exactly_one("#search-input-limit", Input)
         # default some limit in case of invalid input instead of listing whole database
         limit = int(input_limit.value) if input_limit.is_valid else _DEFAULT_SEARCH_LIMIT
 
