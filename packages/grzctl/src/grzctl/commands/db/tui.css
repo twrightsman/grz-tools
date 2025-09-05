@@ -1,6 +1,6 @@
 #pane-overview > HorizontalScroll > Static {
-  height: 8;
-  width: 39;
+  height: auto;
+  width: auto;
   content-align: center middle;
 }
 

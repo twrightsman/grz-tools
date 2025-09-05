@@ -1,3 +1,4 @@
+import datetime
 import itertools
 import logging
 from operator import itemgetter
@@ -104,6 +105,7 @@ class SubmissionCountByDetailedQCByLETable(Static):
             statement = (
                 select(
                     Submission.submitter_id,
+                    Submission.submission_date,
                     Submission.detailed_qc_passed,
                     sqlfn.count(Submission.submitter_id),  # can't count detailed_qc_pass because NULLs are not counted
                 )
@@ -112,30 +114,63 @@ class SubmissionCountByDetailedQCByLETable(Static):
             )
             counts_by_pass_by_le = session.exec(statement).all()
 
+        today = datetime.date.today()
+        quarter = ((today.month - 1) // 3) + 1
+        quarter_end = datetime.date(year=today.year, month=quarter * 3, day=1)
+        quarter_start = datetime.date(year=today.year, month=quarter_end.month - 2, day=1)
         rows = []
         for submitter_id, group in itertools.groupby(
             sorted(counts_by_pass_by_le, key=itemgetter(0)), key=itemgetter(0)
         ):
             qced = 0
             total = 0
-            for _, detailed_qc_passed, count in group:
+            qced_quarter = 0
+            total_quarter = 0
+            qced_month = 0
+            total_month = 0
+            for _, submission_date, detailed_qc_passed, count in group:
                 if detailed_qc_passed is not None:
                     qced += count
+                # current quarter
+                if (submission_date.year == today.year) and (quarter_start <= submission_date <= quarter_end):
+                    if detailed_qc_passed is not None:
+                        qced_quarter += count
+                    total_quarter += count
+                    # current month
+                    if submission_date.month == today.month:
+                        if detailed_qc_passed is not None:
+                            qced_month += count
+                        total_month += count
                 total += count
-            rows.append([submitter_id, qced, total])
+            rows.append([submitter_id, qced, total, qced_quarter, total_quarter, qced_month, total_month])
 
         table = rich.table.Table(
-            rich.table.Column(header="Submitter ID", justify="center"),
-            rich.table.Column(header="QCed", justify="center"),
+            rich.table.Column(header="Submitter", justify="center"),
+            rich.table.Column(header="Total", justify="center"),
+            rich.table.Column(header=f"Q{quarter} {today.year}", justify="center"),
+            rich.table.Column(header=today.strftime("%B"), justify="center"),
         )
-        for submitter_id, qced, total in rows:
+        for submitter_id, qced, total, qced_quarter, total_quarter, qced_month, total_month in rows:
             qced_prop = qced / total
             qced_prop_text = (
                 rich.text.Text(f"{qced}/{total} (")
                 + rich.text.Text(f"{qced_prop:.1%}", style="green" if qced_prop >= 0.02 else "red")
                 + rich.text.Text(")")
             )
-            table.add_row(str(submitter_id), qced_prop_text)
+            qced_prop_quarter = qced_quarter / total_quarter
+            qced_quarter_prop_text = (
+                rich.text.Text(f"{qced_quarter}/{total_quarter} (")
+                + rich.text.Text(f"{qced_prop_quarter:.1%}", style="green" if qced_prop_quarter >= 0.02 else "red")
+                + rich.text.Text(")")
+            )
+            table.add_row(
+                str(submitter_id),
+                qced_prop_text,
+                qced_quarter_prop_text,
+                rich.text.Text(
+                    f"{qced_month}/{total_month}", style="red" if not qced_month and total_month else "green"
+                ),
+            )
         self.update(table)
         self.loading = False
 
