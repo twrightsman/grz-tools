@@ -45,7 +45,7 @@ class SubmissionCountByStateTable(Static):
                 select(log1.state, sqlfn.count(log1.state))  # type: ignore[arg-type]
                 .join(
                     log2,
-                    (log1.submission_id == log2.submission_id) & (log1.timestamp < log2.timestamp),
+                    (log1.submission_id == log2.submission_id) & (log1.timestamp < log2.timestamp),  # type: ignore[arg-type]
                     isouter=True,  # type: ignore[arg-type]
                 )
                 .where(log2.timestamp.is_(None))  # type: ignore[attr-defined]
