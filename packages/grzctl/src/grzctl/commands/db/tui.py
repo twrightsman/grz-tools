@@ -89,7 +89,12 @@ class SubmissionCountByConsentTable(Static):
             show_header=False,
         )
         for consented, count in counts_by_consent:
-            table.add_row(rich.pretty.Pretty(consented), rich.pretty.Pretty(count))
+            table.add_row(
+                rich.pretty.Pretty(consented)
+                if consented is not None
+                else rich.text.Text("missing", style="italic yellow"),
+                rich.pretty.Pretty(count),
+            )
         self.update(table)
         self.loading = False
 
@@ -104,25 +109,19 @@ class SubmissionCountByDetailedQCByLETable(Static):
     async def load(self, database: SubmissionDb) -> None:
         self.loading = True
         with database._get_session() as session:
-            statement = (
-                select(  # type: ignore[type-var]
-                    Submission.submitter_id,
-                    Submission.submission_date,
-                    Submission.detailed_qc_passed,
-                    sqlfn.count(Submission.submitter_id),  # type: ignore[arg-type] # can't count detailed_qc_pass because NULLs are not counted
-                )
-                .where(Submission.submission_type != SubmissionType.test)
-                .group_by(Submission.submitter_id, Submission.detailed_qc_passed)  # type: ignore[arg-type]
-            )
-            counts_by_pass_by_le = session.exec(statement).all()
+            statement = select(  # type: ignore[type-var]
+                Submission.submitter_id, Submission.submission_date, Submission.detailed_qc_passed
+            ).where(Submission.submission_type != SubmissionType.test)
+            submission_qc_states = session.exec(statement).all()
 
         today = datetime.date.today()
         quarter = ((today.month - 1) // 3) + 1
-        quarter_end = datetime.date(year=today.year, month=quarter * 3, day=1)
+        quarter_end = datetime.date(year=today.year, month=(quarter * 3) + 1, day=1) - datetime.timedelta(days=1)
         quarter_start = datetime.date(year=today.year, month=quarter_end.month - 2, day=1)
+        logger.debug("Quarter: %s to %s", quarter_start, quarter_end)
         rows = []
         for submitter_id, group in itertools.groupby(
-            sorted(counts_by_pass_by_le, key=itemgetter(0)), key=itemgetter(0)
+            sorted(submission_qc_states, key=itemgetter(0)), key=itemgetter(0)
         ):
             qced = 0
             total = 0
@@ -130,9 +129,9 @@ class SubmissionCountByDetailedQCByLETable(Static):
             total_quarter = 0
             qced_month = 0
             total_month = 0
-            for _, submission_date, detailed_qc_passed, count in group:
+            for _, submission_date, detailed_qc_passed in group:
                 if detailed_qc_passed is not None:
-                    qced += count
+                    qced += 1
                 # current quarter
                 if (
                     (submission_date is not None)
@@ -140,14 +139,14 @@ class SubmissionCountByDetailedQCByLETable(Static):
                     and (quarter_start <= submission_date <= quarter_end)
                 ):
                     if detailed_qc_passed is not None:
-                        qced_quarter += count
-                    total_quarter += count
+                        qced_quarter += 1
+                    total_quarter += 1
                     # current month
                     if submission_date.month == today.month:
                         if detailed_qc_passed is not None:
-                            qced_month += count
-                        total_month += count
-                total += count
+                            qced_month += 1
+                        total_month += 1
+                total += 1
             rows.append([submitter_id, qced, total, qced_quarter, total_quarter, qced_month, total_month])
 
         table = rich.table.Table(
