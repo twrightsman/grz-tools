@@ -14,6 +14,7 @@ import pytest
 import yaml
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from grz_common.constants import REDACTED_TAN
+from grz_db.models.submission import SubmissionDb
 from grz_pydantic_models.submission.metadata import GrzSubmissionMetadata
 from grzctl.models.config import DbConfig
 
@@ -134,6 +135,18 @@ def test_populate(blank_database_config_path: Path):
     assert result_show.exit_code == 0, result_show.stderr
     # shorter than tanG and less likely to be truncated in various terminal widths
     assert metadata.submission.local_case_id in result_show.stdout, result_show.stdout
+
+    with open(blank_database_config_path, encoding="utf-8") as blank_database_config_file:
+        config = yaml.load(blank_database_config_file, Loader=yaml.Loader)
+    db = SubmissionDb(db_url=config["db"]["database_url"], author=None)
+
+    submission = db.get_submission(metadata.submission_id)
+    assert submission.pseudonym == metadata.submission.local_case_id
+
+    # check that the consent records were populated
+    father = metadata.donors[1]
+    consent_father = db.get_consent_records(submission_id=metadata.submission_id, pseudonym=father.donor_pseudonym)[0]
+    assert father.research_consents[0].no_scope_justification == consent_father.research_consent_missing_justification
 
 
 def test_populate_redacted(tmp_path: Path, blank_database_config_path: Path):
