@@ -9,6 +9,7 @@ import click
 import requests
 import rich
 from grz_common.cli import config_file, output_json, submission_dir
+from grz_common.constants import REDACTED_TAN
 from grz_common.workers.submission import Submission
 from grz_pydantic_models.pruefbericht import LibraryType as PruefberichtLibraryType
 from grz_pydantic_models.pruefbericht import Pruefbericht, SubmittedCase
@@ -97,7 +98,12 @@ def get_pruefbericht_library_type(metadata: GrzSubmissionMetadata) -> Pruefberic
     help="Do not perform the request, only output the pruefbericht. Can be combined with --json.",
     is_flag=True,
 )
-def pruefbericht(config_file, submission_dir, output_json, failed, token, dry_run):  # noqa: C901, PLR0913, PLR0912
+@click.option(
+    "--allow-redacted-tan-g",
+    help="Allow submission of a Prüfbericht with a redacted TAN.",
+    is_flag=True,
+)
+def pruefbericht(config_file, submission_dir, output_json, failed, token, dry_run, allow_redacted_tan_g):  # noqa: C901, PLR0913, PLR0912
     """
     Submit a Prüfbericht to BfArM.
     """
@@ -134,6 +140,9 @@ def pruefbericht(config_file, submission_dir, output_json, failed, token, dry_ru
         raise ValueError("pruefbericht.client_id must be provided to submit Prüfberichte")
     if config.pruefbericht.client_secret is None:
         raise ValueError("pruefbericht.client_secret must be provided to submit Prüfberichte")
+
+    if metadata.submission.tan_g == REDACTED_TAN and not allow_redacted_tan_g:
+        raise ValueError("Refusing to submit a Prüfbericht with a redacted TAN")
 
     if token:
         # replace newlines in token if accidentally present from pasting
