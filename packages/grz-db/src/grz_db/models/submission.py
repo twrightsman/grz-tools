@@ -468,6 +468,26 @@ class SubmissionDb:
                 session.rollback()
                 raise e
 
+    def get_detailed_qc_results(self, submission_id: str) -> tuple[DetailedQCResult, ...]:
+        """Retrieve all detailed QC results for a given submission."""
+        with self._get_session() as session:
+            statement = select(DetailedQCResult).where(DetailedQCResult.submission_id == submission_id)
+            results = tuple(session.exec(statement).all())
+        return results
+
+    def add_detailed_qc_result(self, result: DetailedQCResult) -> DetailedQCResult:
+        """Add or update a detailed QC result to/in the database."""
+        with self._get_session() as session:
+            session.add(result)
+
+            try:
+                session.commit()
+                session.refresh(result)
+                return result
+            except Exception as e:
+                session.rollback()
+                raise e
+
     def add_change_request(
         self,
         submission_id: str,

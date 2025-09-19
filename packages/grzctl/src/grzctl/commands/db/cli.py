@@ -1,12 +1,14 @@
 """Command for managing a submission database"""
 
+import csv
 import json
 import logging
 import sys
 import traceback
 from collections import namedtuple
-from datetime import date
+from datetime import UTC, date, datetime
 from operator import itemgetter
+from pathlib import Path
 from typing import Any
 
 import click
@@ -16,7 +18,7 @@ import rich.panel
 import rich.table
 import rich.text
 import textual.logging
-from grz_common.cli import config_file, output_json
+from grz_common.cli import FILE_R_E, config_file, output_json
 from grz_common.constants import REDACTED_TAN
 from grz_common.logging import LOGGING_DATEFMT, LOGGING_FORMAT
 from grz_db.errors import (
@@ -30,12 +32,13 @@ from grz_db.models.submission import (
     ChangeRequestEnum,
     ChangeRequestLog,
     ConsentRecord,
+    DetailedQCResult,
     Submission,
     SubmissionDb,
     SubmissionStateEnum,
     SubmissionStateLog,
 )
-from grz_pydantic_models.submission.metadata import GrzSubmissionMetadata, LibraryType
+from grz_pydantic_models.submission.metadata import GrzSubmissionMetadata, LibraryType, SequenceSubtype, SequenceType
 
 from ...models.config import DbConfig
 from .. import limit
@@ -618,6 +621,75 @@ def populate(ctx: click.Context, submission_id: str, metadata_path: str, confirm
         for deleted_record in deleted_records:
             db_service.delete_consent_record(deleted_record)
         console_err.print("[green]Database populated successfully.[/green]")
+
+
+@submission.command()
+@click.argument("submission_id", type=str)
+@click.argument("report_csv_path", metavar="path/to/report.csv", type=FILE_R_E)
+@click.option(
+    "--confirm/--no-confirm",
+    default=True,
+    help="Whether to confirm changes before committing to database. (Default: confirm)",
+)
+@click.pass_context
+def populate_qc(ctx: click.Context, submission_id: str, report_csv_path: str, confirm: bool):
+    """Populate the submission database from a detailed QC pipeline report."""
+    db = ctx.obj["db_url"]
+    db_service = get_submission_db_instance(db, author=ctx.obj["author"])
+
+    with open(report_csv_path, encoding="utf-8", newline="") as report_csv_file:
+        reader = csv.reader(report_csv_file)
+        rows = list(reader)
+    QCReportRow = namedtuple("QCResult", rows[0])  # type: ignore[misc]
+    reports = [QCReportRow(*row) for row in rows[1:]]
+
+    report_mtime = datetime.fromtimestamp(Path(report_csv_path).stat().st_mtime, tz=UTC)
+    results = []
+    for report in reports:
+        results.append(
+            DetailedQCResult(
+                submission_id=submission_id,
+                lab_datum_id=report.sampleId,  # type: ignore[attr-defined]
+                timestamp=report_mtime,
+                sequence_type=SequenceType.dna,  # pipeline only supports DNA and doesn't pass type to report.csv
+                sequence_subtype=SequenceSubtype(report.sequenceSubtype),  # type: ignore[attr-defined]
+                library_type=LibraryType(report.libraryType),  # type: ignore[attr-defined]
+                percent_bases_above_quality_threshold=float(report.percentBasesAboveQualityThreshold),  # type: ignore[attr-defined]
+                mean_depth_of_coverage=float(report.meanDepthOfCoverage),  # type: ignore[attr-defined]
+                targeted_regions_above_min_coverage=float(report.targetedRegionsAboveMinCoverage),  # type: ignore[attr-defined]
+            )
+        )
+    table = rich.table.Table(
+        "Submission ID",
+        "Lab Datum ID",
+        "Timestamp",
+        "Sequence Type",
+        "Sequence Subtype",
+        "Library Type",
+        "PBaQT",
+        "MDoC",
+        "TRaMC",
+        title="New Detailed QC Results",
+    )
+    for result in results:
+        table.add_row(
+            result.submission_id,
+            result.lab_datum_id,
+            f"{result.timestamp:%c}",
+            result.sequence_type,
+            result.sequence_subtype,
+            result.library_type,
+            rich.pretty.Pretty(result.percent_bases_above_quality_threshold),
+            rich.pretty.Pretty(result.mean_depth_of_coverage),
+            rich.pretty.Pretty(result.targeted_regions_above_min_coverage),
+        )
+    console.print(table)
+
+    if not confirm or click.confirm(
+        "Are you sure you want to commit these changes to the database?", default=False, show_default=True
+    ):
+        for result in results:
+            db_service.add_detailed_qc_result(result)
 
 
 @submission.command()
