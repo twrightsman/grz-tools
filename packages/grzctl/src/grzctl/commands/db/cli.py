@@ -557,11 +557,14 @@ def _diff_consent_records(
         diff_table.add_column("Before")
         diff_table.add_column("After")
         for field in sorted(record_after.model_fields.keys() - {"submission_id", "pseudonym"}):
-            before = rich.pretty.Pretty(getattr(record_before, field)) if record_before else _TEXT_MISSING
-            after = rich.pretty.Pretty(getattr(record_after, field))
+            before = getattr(record_before, field, None)
+            after = getattr(record_after, field)
             if before != after:
-                diff_table.add_row(field, before, after)
-        consent_diff_tables.append(diff_table)
+                diff_table.add_row(
+                    field, _TEXT_MISSING if before is None else rich.pretty.Pretty(before), rich.pretty.Pretty(after)
+                )
+        if diff_table.row_count:
+            consent_diff_tables.append(diff_table)
 
     deleted_records = tuple(filter(lambda r: r.pseudonym not in pending_pseudonyms, pseudonym2before.values()))
     for deleted_record in deleted_records:

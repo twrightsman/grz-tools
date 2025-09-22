@@ -1,12 +1,16 @@
 """Command for generating various reports related to GRZ activities."""
 
+import calendar
+import csv
 import datetime
 import logging
+import typing
 from pathlib import Path
 
 import click
 from grz_common.cli import config_file
-from grz_db.models.submission import SubmissionStateEnum
+from grz_db.models.submission import Submission, SubmissionDb, SubmissionStateEnum
+from sqlmodel import select
 
 from ..models.config import DbConfig
 from .db.cli import get_submission_db_instance
@@ -85,6 +89,42 @@ def processed(ctx: click.Context, since: datetime.date | None, until: datetime.d
         )
 
 
+def _dump_overview_report(output_path: Path, database: SubmissionDb, year: int, quarter: int) -> None:
+    quarter_start_date = datetime.date(year=year, month=((quarter - 1) * 3) + 1, day=1)
+    quarter_end_month = quarter_start_date.month + 2
+    _quarter_end_month_first_weekday, days_in_quarter_end_month = calendar.monthrange(year, quarter_end_month)
+    quarter_end_date = quarter_start_date.replace(month=quarter_end_month, day=days_in_quarter_end_month)
+    with database._get_session() as session:
+        statement = select(Submission).where(Submission.submission_date.between(quarter_start_date, quarter_end_date))  # type: ignore[union-attr]
+        submissions = list(session.exec(statement).all())
+
+    with open(output_path, mode="w", encoding="utf-8", newline="") as output_file:
+        writer = csv.writer(output_file, delimiter="\t")
+        # header
+        writer.writerow(
+            [
+                "genomicDataCenterId",
+                "quarter",
+                "year",
+                "submitterId",
+                "number_of_end-to-end_tests",
+                "number_of_passed_end-to-end_tests",
+                "number_of_submissions_total",
+                "number_of_submissions_single",
+                "number_of_submissions_duo",
+                "number_of_submissions_trio",
+                "number_of_failed_qcs",
+                "number_of_mv_consent_revocations_index",
+                "number_of_research_consent_revocations_index",
+                "number_of_mv_consent_revocations_not_index",
+                "number_of_research_consent_revocations_not_index",
+                "number_of_deletions",
+            ]
+        )
+        for submission in submissions:
+            writer.writerow([submission.data_node_id, quarter, year])
+
+
 @report.command()
 @click.option(
     "--quarter",
@@ -113,12 +153,12 @@ def quarterly(ctx: click.Context, year: int | None, quarter: int | None, output_
     Generate the tables for the quarterly report.
     """
     db = ctx.obj["db_url"]
-    # FIXME: prefixed to silence ruff check, need to actually use later
-    _submission_db = get_submission_db_instance(db)
+    submission_db = get_submission_db_instance(db)
 
     if bool(year) != bool(quarter):
         raise click.UsageError("Both year and quarter must be provided or omitted.")
-    elif (year and quarter) is None:
+
+    if (year and quarter) is None:
         today = datetime.date.today()
         quarter = ((today.month - 1) % 3) + 1
         # default to last quarter if ended less than 15 days ago otherwise current quarter
@@ -132,3 +172,6 @@ def quarterly(ctx: click.Context, year: int | None, quarter: int | None, output_
             quarter -= 1
 
     log.info("Generating quarterly report for Q%d %d", quarter, year)
+
+    overview_output_path = output_directory / "Gesamtübersicht.tsv"
+    _dump_overview_report(overview_output_path, submission_db, typing.cast(int, year), typing.cast(int, quarter))
