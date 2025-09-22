@@ -22,6 +22,7 @@ depends_on: str | Sequence[str] | None = None
 
 def upgrade() -> None:
     """Upgrade schema."""
+    # we have to batch alter because SQLite doesn't support ALTER on column types
     with op.batch_alter_table("submissions") as batch_op:
         # modified/extra submission table columns
         batch_op.alter_column("library_type", type_=AutoString(), new_column_name="library_types_index")
@@ -108,9 +109,17 @@ def upgrade() -> None:
             ),
             nullable=False,
         ),
-        sa.Column("percent_bases_above_quality_threshold", sa.Float(), nullable=False),
+        sa.Column("percent_bases_above_quality_threshold_minimum_quality", sa.Float(), nullable=False),
+        sa.Column("percent_bases_above_quality_threshold_percent", sa.Float(), nullable=False),
+        sa.Column("percent_bases_above_quality_threshold_passed_qc", sa.Boolean(), nullable=False),
+        sa.Column("percent_bases_above_quality_threshold_percent_deviation", sa.Float(), nullable=False),
         sa.Column("mean_depth_of_coverage", sa.Float(), nullable=False),
+        sa.Column("mean_depth_of_coverage_passed_qc", sa.Boolean(), nullable=False),
+        sa.Column("mean_depth_of_coverage_percent_deviation", sa.Float(), nullable=False),
+        sa.Column("targeted_regions_min_coverage", sa.Float(), nullable=False),
         sa.Column("targeted_regions_above_min_coverage", sa.Float(), nullable=False),
+        sa.Column("targeted_regions_above_min_coverage_passed_qc", sa.Boolean(), nullable=False),
+        sa.Column("targeted_regions_above_min_coverage_percent_deviation", sa.Float(), nullable=False),
     )
 
 
