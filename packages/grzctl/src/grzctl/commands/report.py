@@ -113,7 +113,8 @@ def quarterly(ctx: click.Context, year: int | None, quarter: int | None, output_
     Generate the tables for the quarterly report.
     """
     db = ctx.obj["db_url"]
-    submission_db = get_submission_db_instance(db)
+    # FIXME: prefixed to silence ruff check, need to actually use later
+    _submission_db = get_submission_db_instance(db)
 
     if bool(year) != bool(quarter):
         raise click.UsageError("Both year and quarter must be provided or omitted.")

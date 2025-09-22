@@ -7,6 +7,7 @@ import sys
 import traceback
 from collections import namedtuple
 from datetime import UTC, date, datetime
+from enum import StrEnum
 from operator import itemgetter
 from pathlib import Path
 from typing import Any
@@ -38,11 +39,19 @@ from grz_db.models.submission import (
     SubmissionStateEnum,
     SubmissionStateLog,
 )
-from grz_pydantic_models.submission.metadata import GrzSubmissionMetadata, LibraryType, SequenceSubtype, SequenceType
+from grz_pydantic_models.common import StrictBaseModel
+from grz_pydantic_models.submission.metadata import (
+    GenomicStudySubtype,
+    GrzSubmissionMetadata,
+    LibraryType,
+    Relation,
+    SequenceSubtype,
+    SequenceType,
+)
+from pydantic import Field
 
 from ...models.config import DbConfig
 from .. import limit
-from ..pruefbericht import get_pruefbericht_library_type
 from . import SignatureStatus, _verify_signature
 from .tui import DatabaseBrowser
 
@@ -448,7 +457,7 @@ def modify(ctx: click.Context, submission_id: str, key: str, value: str):
         raise click.ClickException(f"Failed to update submission state: {e}") from e
 
 
-def _diff_metadata(
+def _diff_metadata(  # noqa: C901
     submission: Submission, metadata: GrzSubmissionMetadata, ignore_fields: set[str]
 ) -> list[tuple[str, Any, Any]]:
     """Given a database submission and a metadata.json file, report changed fields and their before/after values if they are not in ignore_fields."""
@@ -488,10 +497,26 @@ def _diff_metadata(
     if "data_node_id" not in ignore_fields and (submission.data_node_id != metadata.submission.genomic_data_center_id):
         changes.append(("data_node_id", submission.data_node_id, metadata.submission.genomic_data_center_id))
 
-    # library type
-    metadata_library_type = LibraryType(get_pruefbericht_library_type(metadata))
-    if "library_type" not in ignore_fields and (submission.library_type != metadata_library_type):
-        changes.append(("library_type", submission.library_type, metadata_library_type))
+    # index library types
+    metadata_library_types_index = {datum.library_type for datum in metadata.index_donor.lab_data}
+    if "library_types_index" not in ignore_fields and (submission.library_types_index != metadata_library_types_index):
+        changes.append(("library_types_index", submission.library_types_index, metadata_library_types_index))
+
+    # index sequence types
+    metadata_sequence_types_index = {datum.sequence_type for datum in metadata.index_donor.lab_data}
+    if "sequence_types_index" not in ignore_fields and (
+        submission.sequence_types_index != metadata_sequence_types_index
+    ):
+        changes.append(("sequence_types_index", submission.sequence_types_index, metadata_sequence_types_index))
+
+    # index sequence subtypes
+    metadata_sequence_subtypes_index = {datum.sequence_subtype for datum in metadata.index_donor.lab_data}
+    if "sequence_subtypes_index" not in ignore_fields and (
+        submission.sequence_subtypes_index != metadata_sequence_subtypes_index
+    ):
+        changes.append(
+            ("sequence_subtypes_index", submission.sequence_subtypes_index, metadata_sequence_subtypes_index)
+        )
 
     # consent state
     consented = metadata.consents_to_research(date=date.today())
@@ -512,7 +537,7 @@ def _diff_consent_records(
     for donor in metadata.donors:
         record_after = ConsentRecord(
             submission_id=metadata.submission_id,
-            pseudonym=donor.donor_pseudonym,
+            pseudonym="index" if donor.relation == Relation.index_ else donor.donor_pseudonym,
             relation=donor.relation,
             mv_consented=True,  # currently must be true to validate, revisit this to allow revocation
             research_consented=donor.consents_to_research(date=date.today()),
@@ -526,7 +551,7 @@ def _diff_consent_records(
             continue
         updated_records.append(record_after)
 
-        table_title = f"[green]Donor {record_after.pseudonym} added/updated[/green]"
+        table_title = f"[green]Donor '{record_after.pseudonym}' added/updated[/green]"
         diff_table = rich.table.Table(title=table_title, min_width=len(table_title), title_justify="left")
         diff_table.add_column("Key")
         diff_table.add_column("Before")
@@ -623,6 +648,39 @@ def populate(ctx: click.Context, submission_id: str, metadata_path: str, confirm
         console_err.print("[green]Database populated successfully.[/green]")
 
 
+class QCStatus(StrEnum):
+    PASS = "PASS"  # noqa: S105
+    FAIL = "FAIL"
+    TOO_LOW = "TOO LOW"
+
+
+class QCReportRow(StrictBaseModel):
+    sample_id: str
+    donor_pseudonym: str
+    lab_data_name: str
+    library_type: LibraryType
+    sequence_subtype: SequenceSubtype
+    genomic_study_subtype: GenomicStudySubtype
+    quality_control_status: QCStatus
+    mean_depth_of_coverage: float
+    mean_depth_of_coverage_provided: float
+    mean_depth_of_coverage_required: float
+    mean_depth_of_coverage_deviation: float
+    mean_depth_of_coverage_qc_status: QCStatus = Field(alias="meanDepthOfCoverageQCStatus")
+    percent_bases_above_quality_threshold: float
+    quality_threshold: float
+    percent_bases_above_quality_threshold_provided: float
+    percent_bases_above_quality_threshold_required: float
+    percent_bases_above_quality_threshold_deviation: float
+    percent_bases_above_quality_threshold_qc_status: QCStatus = Field(alias="percentBasesAboveQualityThresholdQCStatus")
+    targeted_regions_above_min_coverage: float
+    min_coverage: float
+    targeted_regions_above_min_coverage_provided: float
+    targeted_regions_above_min_coverage_required: float
+    targeted_regions_above_min_coverage_deviation: float
+    targeted_regions_above_min_coverage_qc_status: QCStatus = Field(alias="targetedRegionsAboveMinCoverageQCStatus")
+
+
 @submission.command()
 @click.argument("submission_id", type=str)
 @click.argument("report_csv_path", metavar="path/to/report.csv", type=FILE_R_E)
@@ -639,9 +697,10 @@ def populate_qc(ctx: click.Context, submission_id: str, report_csv_path: str, co
 
     with open(report_csv_path, encoding="utf-8", newline="") as report_csv_file:
         reader = csv.reader(report_csv_file)
-        rows = list(reader)
-    QCReportRow = namedtuple("QCResult", rows[0])  # type: ignore[misc]
-    reports = [QCReportRow(*row) for row in rows[1:]]
+        header = next(reader)
+        reports = []
+        for row in reader:
+            reports.append(QCReportRow(**dict(zip(header, row, strict=True))))
 
     report_mtime = datetime.fromtimestamp(Path(report_csv_path).stat().st_mtime, tz=UTC)
     results = []
@@ -649,14 +708,24 @@ def populate_qc(ctx: click.Context, submission_id: str, report_csv_path: str, co
         results.append(
             DetailedQCResult(
                 submission_id=submission_id,
-                lab_datum_id=report.sampleId,  # type: ignore[attr-defined]
+                lab_datum_id=report.sample_id,
                 timestamp=report_mtime,
                 sequence_type=SequenceType.dna,  # pipeline only supports DNA and doesn't pass type to report.csv
-                sequence_subtype=SequenceSubtype(report.sequenceSubtype),  # type: ignore[attr-defined]
-                library_type=LibraryType(report.libraryType),  # type: ignore[attr-defined]
-                percent_bases_above_quality_threshold=float(report.percentBasesAboveQualityThreshold),  # type: ignore[attr-defined]
-                mean_depth_of_coverage=float(report.meanDepthOfCoverage),  # type: ignore[attr-defined]
-                targeted_regions_above_min_coverage=float(report.targetedRegionsAboveMinCoverage),  # type: ignore[attr-defined]
+                sequence_subtype=report.sequence_subtype,
+                library_type=report.library_type,
+                percent_bases_above_quality_threshold_minimum_quality=report.quality_threshold,
+                percent_bases_above_quality_threshold_percent=report.percent_bases_above_quality_threshold,
+                percent_bases_above_quality_threshold_passed_qc=report.percent_bases_above_quality_threshold_qc_status
+                == QCStatus.PASS,
+                percent_bases_above_quality_threshold_percent_deviation=report.percent_bases_above_quality_threshold_deviation,
+                mean_depth_of_coverage=report.mean_depth_of_coverage,
+                mean_depth_of_coverage_passed_qc=report.mean_depth_of_coverage_qc_status == QCStatus.PASS,
+                mean_depth_of_coverage_percent_deviation=report.mean_depth_of_coverage_deviation,
+                targeted_regions_min_coverage=report.min_coverage,
+                targeted_regions_above_min_coverage=report.targeted_regions_above_min_coverage,
+                targeted_regions_above_min_coverage_passed_qc=report.targeted_regions_above_min_coverage_qc_status
+                == QCStatus.PASS,
+                targeted_regions_above_min_coverage_percent_deviation=report.targeted_regions_above_min_coverage_deviation,
             )
         )
     table = rich.table.Table(
@@ -679,7 +748,7 @@ def populate_qc(ctx: click.Context, submission_id: str, report_csv_path: str, co
             result.sequence_type,
             result.sequence_subtype,
             result.library_type,
-            rich.pretty.Pretty(result.percent_bases_above_quality_threshold),
+            rich.pretty.Pretty(result.percent_bases_above_quality_threshold_percent),
             rich.pretty.Pretty(result.mean_depth_of_coverage),
             rich.pretty.Pretty(result.targeted_regions_above_min_coverage),
         )
@@ -757,7 +826,11 @@ def show(ctx: click.Context, submission_id: str):
         ("Submitter ID", "submitter_id"),
         ("Data Node ID", "data_node_id"),
         ("Disease Type", "disease_type"),
-        ("Library Type", "library_type"),
+        ("Genomic Study Type", "genomic_study_type"),
+        ("Genomic Study Subtype", "genomic_study_subtype"),
+        ("Index Library Types", "library_types_index"),
+        ("Index Sequence Types", "sequence_types_index"),
+        ("Index Sequence Subtypes", "sequence_subtypes_index"),
         ("Basic QC Passed", "basic_qc_passed"),
         ("Consented", "consented"),
         ("Detailed QC Passed", "detailed_qc_passed"),

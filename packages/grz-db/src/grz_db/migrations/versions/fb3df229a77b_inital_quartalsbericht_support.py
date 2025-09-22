@@ -22,17 +22,18 @@ depends_on: str | Sequence[str] | None = None
 
 def upgrade() -> None:
     """Upgrade schema."""
-    # extra submission table columns
-    op.add_column(
-        "submissions", sa.Column("genomic_study_type", sa.Enum("single", "duo", "trio", name="genomicstudytype"))
-    )
-    op.add_column(
-        "submissions",
-        sa.Column(
-            "genomic_study_subtype",
-            sa.Enum("tumor_only", "tumor_germline", "germline_only", name="genomicstudysubtype"),
-        ),
-    )
+    with op.batch_alter_table("submissions") as batch_op:
+        # modified/extra submission table columns
+        batch_op.alter_column("library_type", type_=AutoString(), new_column_name="library_types_index")
+        batch_op.add_column(sa.Column("genomic_study_type", sa.Enum("single", "duo", "trio", name="genomicstudytype")))
+        batch_op.add_column(
+            sa.Column(
+                "genomic_study_subtype",
+                sa.Enum("tumor_only", "tumor_germline", "germline_only", name="genomicstudysubtype"),
+            ),
+        )
+        batch_op.add_column(sa.Column("sequence_types_index", AutoString()))
+        batch_op.add_column(sa.Column("sequence_subtypes_index", AutoString()))
 
     # new consent record table
     op.create_table(

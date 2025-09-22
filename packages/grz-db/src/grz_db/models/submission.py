@@ -4,6 +4,7 @@ from contextlib import contextmanager
 from operator import attrgetter
 from typing import Annotated, Any, ClassVar, Optional
 
+import sqlalchemy as sa
 from alembic import command as alembic_command
 from alembic.config import Config as AlembicConfig
 from alembic.runtime.migration import MigrationContext
@@ -67,6 +68,28 @@ class SubmissionStateEnum(CaseInsensitiveStrEnum, ListableEnum):  # type: ignore
     ERROR = "Error"
 
 
+class SemicolonSeparatedStringSet(sa.types.TypeDecorator):
+    impl = sa.types.String
+
+    cache_ok = True
+
+    def process_bind_param(self, value: set[str] | None, dialect: sa.engine.Dialect):
+        if value is None:
+            return None
+
+        for s in value:
+            if ";" in s:
+                raise ValueError(
+                    f"Cannot safely serialize string '{s}' in a semicolon-separated set since it contains a semicolon."
+                )
+
+        # sort the set for consistent serialization behavior / deterministic output
+        return ";".join(sorted(value))
+
+    def process_result_value(self, value: str | None, dialect: sa.engine.Dialect):
+        return None if value is None else set(value.split(";"))
+
+
 class SubmissionBase(SQLModel):
     """Submission base model."""
 
@@ -83,7 +106,11 @@ class SubmissionBase(SQLModel):
     submitter_id: SubmitterId | None = None
     data_node_id: GenomicDataCenterId | None = None
     disease_type: DiseaseType | None = None
-    library_type: LibraryType | None = None
+    library_types_index: set[LibraryType] | None = Field(sa_column=Column(SemicolonSeparatedStringSet), default=None)
+    sequence_types_index: set[SequenceType] | None = Field(sa_column=Column(SemicolonSeparatedStringSet), default=None)
+    sequence_subtypes_index: set[SequenceSubtype] | None = Field(
+        sa_column=Column(SemicolonSeparatedStringSet), default=None
+    )
     basic_qc_passed: bool | None = None
 
     # fields also for Tätigkeitsbericht
@@ -260,9 +287,17 @@ class DetailedQCResult(SQLModel, table=True):
     sequence_type: SequenceType
     sequence_subtype: SequenceSubtype
     library_type: LibraryType
-    percent_bases_above_quality_threshold: float
+    percent_bases_above_quality_threshold_minimum_quality: float
+    percent_bases_above_quality_threshold_percent: float
+    percent_bases_above_quality_threshold_passed_qc: bool
+    percent_bases_above_quality_threshold_percent_deviation: float
     mean_depth_of_coverage: float
+    mean_depth_of_coverage_passed_qc: bool
+    mean_depth_of_coverage_percent_deviation: float
+    targeted_regions_min_coverage: float
     targeted_regions_above_min_coverage: float
+    targeted_regions_above_min_coverage_passed_qc: bool
+    targeted_regions_above_min_coverage_percent_deviation: float
 
     model_config = ConfigDict(  # type: ignore
         json_encoders={datetime.datetime: serialize_datetime_to_iso_z},
