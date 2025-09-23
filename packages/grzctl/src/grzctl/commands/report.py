@@ -93,13 +93,31 @@ def processed(ctx: click.Context, since: datetime.date | None, until: datetime.d
         )
 
 
-def _dump_overview_report(output_path: Path, database: SubmissionDb, year: int, quarter: int) -> None:
+def _get_quarter_date_bounds(year: int, quarter: int) -> tuple[datetime.date, datetime.date]:
     quarter_start_date = datetime.date(year=year, month=((quarter - 1) * 3) + 1, day=1)
     quarter_end_month = quarter_start_date.month + 2
     _quarter_end_month_first_weekday, days_in_quarter_end_month = calendar.monthrange(year, quarter_end_month)
     quarter_end_date = quarter_start_date.replace(month=quarter_end_month, day=days_in_quarter_end_month)
 
-    node_submitter_id_combos: set[tuple[str, str]] = set()
+    return quarter_start_date, quarter_end_date
+
+
+def _get_consent_revocations(session, quarter_start_date, quarter_end_date) -> dict[tuple[str, str, str, str], int]:
+    """
+    Revocation is defined as consent state changing from True to False for a
+    donor based on metadata in a submission from this reporting quarter.
+    """
+    raise NotImplementedError
+
+    # index pseudonym comes from submission table pseudonym, which is only unique by submitter!
+
+    # number_of_consent_revocations.get((data_node_id, submitter_id, "mv", "index"), 0)
+
+
+def _dump_overview_report(output_path: Path, database: SubmissionDb, year: int, quarter: int) -> None:
+    quarter_start_date, quarter_end_date = _get_quarter_date_bounds(year=year, quarter=quarter)
+
+    node_submitter_id_combos: set[tuple[str | None, str | None]] = set()
     with database._get_session() as session:
         # number_of_end-to-end_tests
         stmt_number_of_end_to_end_tests = (
@@ -109,8 +127,7 @@ def _dump_overview_report(output_path: Path, database: SubmissionDb, year: int, 
             .group_by(Submission.data_node_id, Submission.submitter_id)  # type: ignore[arg-type]
         )
         number_of_end_to_end_tests = {
-            (node, submitter): count
-            for node, submitter, count in session.execute(stmt_number_of_end_to_end_tests).all()
+            (node, submitter): count for node, submitter, count in session.exec(stmt_number_of_end_to_end_tests).all()
         }
         node_submitter_id_combos.update(number_of_end_to_end_tests.keys())
 
@@ -156,6 +173,10 @@ def _dump_overview_report(output_path: Path, database: SubmissionDb, year: int, 
         node_submitter_id_combos.update(number_of_failed_qcs.keys())
 
         # number_of_*_consent_revocations_*
+        # number_of_consent_revocations = _get_consent_revocations(session, quarter_start_date, quarter_end_date)
+        number_of_consent_revocations: dict[tuple[str, str, str, str], int] = {}
+        for node, submitter, _, _ in number_of_consent_revocations:
+            node_submitter_id_combos.add((node, submitter))
 
         # number_of_deletions
         stmt_number_of_deletions = (
@@ -197,6 +218,11 @@ def _dump_overview_report(output_path: Path, database: SubmissionDb, year: int, 
             ]
         )
         for data_node_id, submitter_id in sorted(node_submitter_id_combos):
+            if data_node_id is None:
+                raise ValueError("At least one submission for the reporting quarter has a null data_node_id")
+            if submitter_id is None:
+                raise ValueError("At least one submission for the reporting quarter has a null submitter_id")
+
             writer.writerow(
                 [
                     data_node_id,
@@ -216,11 +242,82 @@ def _dump_overview_report(output_path: Path, database: SubmissionDb, year: int, 
                         (data_node_id, submitter_id, GenomicStudyType.trio), 0
                     ),
                     number_of_failed_qcs.get((data_node_id, submitter_id), 0),
-                    "NA",  # FIXME: implement the rest
-                    "NA",
-                    "NA",
-                    "NA",
+                    "NA",  # number_of_consent_revocations.get((data_node_id, submitter_id, "mv", "index"), 0),
+                    "NA",  # number_of_consent_revocations.get((data_node_id, submitter_id, "research", "index"), 0),
+                    "NA",  # number_of_consent_revocations.get((data_node_id, submitter_id, "mv", "not-index"), 0),
+                    "NA",  # number_of_consent_revocations.get((data_node_id, submitter_id, "research", "not-index"), 0),
                     number_of_deletions.get((data_node_id, submitter_id), 0),
+                ]
+            )
+
+
+def _dump_dataset_report(output_path: Path, database: SubmissionDb, year: int, quarter: int) -> None:
+    quarter_start_date, quarter_end_date = _get_quarter_date_bounds(year=year, quarter=quarter)
+
+    with database._get_session() as session:
+        stmt_submissions = (
+            select(Submission).where(Submission.submission_date.between(quarter_start_date, quarter_end_date))  # type: ignore[union-attr]
+        )
+        submissions = session.exec(stmt_submissions).all()
+
+    with open(output_path, mode="w", encoding="utf-8", newline="") as output_file:
+        writer = csv.writer(output_file, delimiter="\t")
+        # header
+        writer.writerow(
+            [
+                "genomicDataCenterId",
+                "quarter",
+                "year",
+                "submitterId",
+                "submissionType",
+                "coverageType",
+                "diseaseType",
+                "sequenceType",
+                "libraryType",
+                "data_quality_check_passed",
+                "has_mv_consent",
+                "has_research_consent",
+                "researchConsent[].NoScopeJustification",
+                "detailed_qc_passed",
+                "genomicStudyType",
+                "genomicStudySubtype",
+                "relation",
+                "sequenceSubtype",
+            ]
+        )
+        for submission in submissions:
+            # TODO: make this an enum
+            detailed_qc_passed = "not_performed"
+            if submission.detailed_qc_passed is not None:
+                detailed_qc_passed = "yes" if submission.detailed_qc_passed else "no"
+
+            if submission.sequence_types_index is None:
+                raise ValueError(f"Submission to be reported '{submission.id}' has a null sequence_types_index")
+            if submission.library_types_index is None:
+                raise ValueError(f"Submission to be reported '{submission.id}' has a null library_types_index")
+            if submission.sequence_subtypes_index is None:
+                raise ValueError(f"Submission to be reported '{submission.id}' has a null sequence_subtypes_index")
+
+            writer.writerow(
+                [
+                    submission.data_node_id,
+                    quarter,
+                    year,
+                    submission.submitter_id,
+                    submission.submission_type,
+                    "NA",  # FIXME: add coverage type to migration/populate
+                    submission.disease_type,
+                    ";".join(sorted(submission.sequence_types_index)),
+                    ";".join(sorted(submission.library_types_index)),
+                    "yes" if submission.basic_qc_passed else "no",
+                    "yes",  # currently MV consent is required to validate, need to update this
+                    "yes" if submission.consented else "no",
+                    "NA",  # FIXME: query consent table and join all donors with semicolon
+                    detailed_qc_passed,
+                    submission.genomic_study_type,
+                    submission.genomic_study_subtype,
+                    "index",
+                    ";".join(sorted(submission.sequence_subtypes_index)),
                 ]
             )
 
@@ -271,7 +368,14 @@ def quarterly(ctx: click.Context, year: int | None, quarter: int | None, output_
         if (today.month in {4, 7, 10}) and (today.day <= 15):
             quarter -= 1
 
+    # help out the type checker
+    year = typing.cast(int, year)
+    quarter = typing.cast(int, quarter)
+
     log.info("Generating quarterly report for Q%d %d", quarter, year)
 
     overview_output_path = output_directory / "Gesamtübersicht.tsv"
-    _dump_overview_report(overview_output_path, submission_db, typing.cast(int, year), typing.cast(int, quarter))
+    _dump_overview_report(overview_output_path, submission_db, year, quarter)
+
+    dataset_output_path = output_directory / "Infos_zu_Datensätzen.tsv"
+    _dump_dataset_report(dataset_output_path, submission_db, year, quarter)
