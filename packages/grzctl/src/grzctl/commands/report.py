@@ -11,7 +11,7 @@ from pathlib import Path
 import click
 import sqlalchemy as sa
 from grz_common.cli import config_file
-from grz_db.models.submission import Submission, SubmissionDb, SubmissionStateEnum
+from grz_db.models.submission import ChangeRequestEnum, ChangeRequestLog, Submission, SubmissionDb, SubmissionStateEnum
 from grz_pydantic_models.submission.metadata import GenomicStudyType, SubmissionType
 from sqlalchemy import func as sqlfn
 from sqlmodel import select
@@ -155,6 +155,24 @@ def _dump_overview_report(output_path: Path, database: SubmissionDb, year: int, 
         }
         node_submitter_id_combos.update(number_of_failed_qcs.keys())
 
+        # number_of_*_consent_revocations_*
+
+        # number_of_deletions
+        stmt_number_of_deletions = (
+            select(Submission.data_node_id, Submission.submitter_id, sqlfn.count(1))
+            .where(Submission.submission_date.between(quarter_start_date, quarter_end_date))  # type: ignore[union-attr]
+            .join(
+                select(ChangeRequestLog.submission_id)
+                .where(ChangeRequestLog.change == ChangeRequestEnum.DELETE)
+                .subquery()
+            )
+            .group_by(Submission.data_node_id, Submission.submitter_id)  # type: ignore[arg-type]
+        )
+        number_of_deletions = {
+            (node, submitter): count for node, submitter, count in session.execute(stmt_number_of_deletions).all()
+        }
+        node_submitter_id_combos.update(number_of_deletions.keys())
+
     with open(output_path, mode="w", encoding="utf-8", newline="") as output_file:
         writer = csv.writer(output_file, delimiter="\t")
         # header
@@ -198,6 +216,11 @@ def _dump_overview_report(output_path: Path, database: SubmissionDb, year: int, 
                         (data_node_id, submitter_id, GenomicStudyType.trio), 0
                     ),
                     number_of_failed_qcs.get((data_node_id, submitter_id), 0),
+                    "NA",  # FIXME: implement the rest
+                    "NA",
+                    "NA",
+                    "NA",
+                    number_of_deletions.get((data_node_id, submitter_id), 0),
                 ]
             )
 
