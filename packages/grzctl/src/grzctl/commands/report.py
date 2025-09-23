@@ -5,11 +5,15 @@ import csv
 import datetime
 import logging
 import typing
+from collections import defaultdict
 from pathlib import Path
 
 import click
+import sqlalchemy as sa
 from grz_common.cli import config_file
 from grz_db.models.submission import Submission, SubmissionDb, SubmissionStateEnum
+from grz_pydantic_models.submission.metadata import GenomicStudyType, SubmissionType
+from sqlalchemy import func as sqlfn
 from sqlmodel import select
 
 from ..models.config import DbConfig
@@ -94,9 +98,62 @@ def _dump_overview_report(output_path: Path, database: SubmissionDb, year: int, 
     quarter_end_month = quarter_start_date.month + 2
     _quarter_end_month_first_weekday, days_in_quarter_end_month = calendar.monthrange(year, quarter_end_month)
     quarter_end_date = quarter_start_date.replace(month=quarter_end_month, day=days_in_quarter_end_month)
+
+    node_submitter_id_combos: set[tuple[str, str]] = set()
     with database._get_session() as session:
-        statement = select(Submission).where(Submission.submission_date.between(quarter_start_date, quarter_end_date))  # type: ignore[union-attr]
-        submissions = list(session.exec(statement).all())
+        # number_of_end-to-end_tests
+        stmt_number_of_end_to_end_tests = (
+            select(Submission.data_node_id, Submission.submitter_id, sqlfn.count(1))
+            .where(Submission.submission_date.between(quarter_start_date, quarter_end_date))  # type: ignore[union-attr]
+            .where(Submission.submission_type == SubmissionType.test)
+            .group_by(Submission.data_node_id, Submission.submitter_id)  # type: ignore[arg-type]
+        )
+        number_of_end_to_end_tests = {
+            (node, submitter): count
+            for node, submitter, count in session.execute(stmt_number_of_end_to_end_tests).all()
+        }
+        node_submitter_id_combos.update(number_of_end_to_end_tests.keys())
+
+        # number_of_passed_end-to-end_tests
+        stmt_number_of_passed_end_to_end_tests = (
+            select(Submission.data_node_id, Submission.submitter_id, sqlfn.count(1))
+            .where(Submission.submission_date.between(quarter_start_date, quarter_end_date))  # type: ignore[union-attr]
+            .where(Submission.submission_type == SubmissionType.test)
+            .filter(Submission.basic_qc_passed)  # type: ignore[arg-type]
+            .group_by(Submission.data_node_id, Submission.submitter_id)  # type: ignore[arg-type]
+        )
+        number_of_passed_end_to_end_tests = {
+            (node, submitter): count
+            for node, submitter, count in session.execute(stmt_number_of_passed_end_to_end_tests).all()
+        }
+        node_submitter_id_combos.update(number_of_passed_end_to_end_tests.keys())
+
+        # number_of_submissions_*
+        stmt_number_of_submissions = (
+            select(Submission.data_node_id, Submission.submitter_id, Submission.genomic_study_type, sqlfn.count(1))
+            .where(Submission.submission_date.between(quarter_start_date, quarter_end_date))  # type: ignore[union-attr]
+            .group_by(Submission.data_node_id, Submission.submitter_id, Submission.genomic_study_type)  # type: ignore[arg-type]
+        )
+        number_of_submissions_by_genomic_study_type = {
+            (node, submitter, study_type): count
+            for node, submitter, study_type, count in session.execute(stmt_number_of_submissions).all()
+        }
+        number_of_submissions: defaultdict[tuple[str, str], int] = defaultdict(int)
+        for (node, submitter, _), count in number_of_submissions_by_genomic_study_type.items():
+            number_of_submissions[(node, submitter)] += count
+            node_submitter_id_combos.add((node, submitter))
+
+        # number_of_failed_qcs
+        stmt_number_of_failed_qcs = (
+            select(Submission.data_node_id, Submission.submitter_id, sqlfn.count(1))
+            .where(Submission.submission_date.between(quarter_start_date, quarter_end_date))  # type: ignore[union-attr]
+            .filter(sa.not_(Submission.detailed_qc_passed))  # type: ignore[call-overload]
+            .group_by(Submission.data_node_id, Submission.submitter_id)  # type: ignore[arg-type]
+        )
+        number_of_failed_qcs = {
+            (node, submitter): count for node, submitter, count in session.execute(stmt_number_of_failed_qcs).all()
+        }
+        node_submitter_id_combos.update(number_of_failed_qcs.keys())
 
     with open(output_path, mode="w", encoding="utf-8", newline="") as output_file:
         writer = csv.writer(output_file, delimiter="\t")
@@ -121,8 +178,28 @@ def _dump_overview_report(output_path: Path, database: SubmissionDb, year: int, 
                 "number_of_deletions",
             ]
         )
-        for submission in submissions:
-            writer.writerow([submission.data_node_id, quarter, year])
+        for data_node_id, submitter_id in sorted(node_submitter_id_combos):
+            writer.writerow(
+                [
+                    data_node_id,
+                    quarter,
+                    year,
+                    submitter_id,
+                    number_of_end_to_end_tests.get((data_node_id, submitter_id), 0),
+                    number_of_passed_end_to_end_tests.get((data_node_id, submitter_id), 0),
+                    number_of_submissions[(data_node_id, submitter_id)],
+                    number_of_submissions_by_genomic_study_type.get(
+                        (data_node_id, submitter_id, GenomicStudyType.single), 0
+                    ),
+                    number_of_submissions_by_genomic_study_type.get(
+                        (data_node_id, submitter_id, GenomicStudyType.duo), 0
+                    ),
+                    number_of_submissions_by_genomic_study_type.get(
+                        (data_node_id, submitter_id, GenomicStudyType.trio), 0
+                    ),
+                    number_of_failed_qcs.get((data_node_id, submitter_id), 0),
+                ]
+            )
 
 
 @report.command()
