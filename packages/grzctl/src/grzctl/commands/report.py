@@ -113,16 +113,44 @@ def _get_quarter_date_bounds(year: int, quarter: int) -> tuple[datetime.date, da
     return quarter_start_date, quarter_end_date
 
 
-def _get_consent_revocations(session, quarter_start_date, quarter_end_date) -> dict[tuple[str, str, str, str], int]:
+def _get_consent_revocations(
+    session, quarter_start_date, quarter_end_date
+) -> defaultdict[tuple[str, str, str, str], int]:
     """
     Revocation is defined as consent state changing from True to False for a
     donor based on metadata in a submission from this reporting quarter.
     """
-    raise NotImplementedError
-
     # index pseudonym comes from submission table pseudonym, which is only unique by submitter!
+    subquery_quarter_submissions = (
+        select(Submission)
+        .where(Submission.submission_date.between(quarter_start_date, quarter_end_date))  # type: ignore[union-attr]
+        .subquery()
+    )
+    query_quarter_nonconsent_records = (
+        select(
+            subquery_quarter_submissions.c.data_node_id,
+            subquery_quarter_submissions.c.submitter_id,
+            subquery_quarter_submissions.c.pseudonym,
+            ConsentRecord,
+        )
+        .where(sa.or_(sa.not_(ConsentRecord.mv_consented), sa.not_(ConsentRecord.research_consented)))  # type: ignore[call-overload]
+        .join(subquery_quarter_submissions, subquery_quarter_submissions.c.id == ConsentRecord.submission_id)
+    )
+    quarter_nonconsent_records = session.exec(query_quarter_nonconsent_records).all()
 
-    # number_of_consent_revocations.get((data_node_id, submitter_id, "mv", "index"), 0)
+    number_of_consent_revocations: defaultdict[tuple[str, str, str, str], int] = defaultdict(int)
+    for data_node_id, submitter_id, _index_pseudonym, record in quarter_nonconsent_records:
+        # FIXME: need to check consent status at end of last quarter
+        if not record.mv_consented:
+            number_of_consent_revocations[
+                (data_node_id, submitter_id, "mv", "index" if record.relation == Relation.index_ else "not-index")
+            ] += 1
+        if not record.research_consented:
+            number_of_consent_revocations[
+                (data_node_id, submitter_id, "research", "index" if record.relation == Relation.index_ else "not-index")
+            ] += 1
+
+    return number_of_consent_revocations
 
 
 def _dump_overview_report(output_path: Path, database: SubmissionDb, year: int, quarter: int) -> None:
@@ -184,8 +212,7 @@ def _dump_overview_report(output_path: Path, database: SubmissionDb, year: int, 
         node_submitter_id_combos.update(number_of_failed_qcs.keys())
 
         # number_of_*_consent_revocations_*
-        # number_of_consent_revocations = _get_consent_revocations(session, quarter_start_date, quarter_end_date)
-        number_of_consent_revocations: dict[tuple[str, str, str, str], int] = {}
+        number_of_consent_revocations = _get_consent_revocations(session, quarter_start_date, quarter_end_date)
         for node, submitter, _, _ in number_of_consent_revocations:
             node_submitter_id_combos.add((node, submitter))
 
@@ -253,10 +280,10 @@ def _dump_overview_report(output_path: Path, database: SubmissionDb, year: int, 
                         (data_node_id, submitter_id, GenomicStudyType.trio), 0
                     ),
                     number_of_failed_qcs.get((data_node_id, submitter_id), 0),
-                    "NA",  # number_of_consent_revocations.get((data_node_id, submitter_id, "mv", "index"), 0),
-                    "NA",  # number_of_consent_revocations.get((data_node_id, submitter_id, "research", "index"), 0),
-                    "NA",  # number_of_consent_revocations.get((data_node_id, submitter_id, "mv", "not-index"), 0),
-                    "NA",  # number_of_consent_revocations.get((data_node_id, submitter_id, "research", "not-index"), 0),
+                    number_of_consent_revocations.get((data_node_id, submitter_id, "mv", "index"), 0),
+                    number_of_consent_revocations.get((data_node_id, submitter_id, "research", "index"), 0),
+                    number_of_consent_revocations.get((data_node_id, submitter_id, "mv", "not-index"), 0),
+                    number_of_consent_revocations.get((data_node_id, submitter_id, "research", "not-index"), 0),
                     number_of_deletions.get((data_node_id, submitter_id), 0),
                 ]
             )
