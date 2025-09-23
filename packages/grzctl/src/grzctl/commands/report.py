@@ -4,6 +4,7 @@ import calendar
 import csv
 import datetime
 import logging
+import re
 import typing
 from collections import defaultdict
 from pathlib import Path
@@ -11,8 +12,15 @@ from pathlib import Path
 import click
 import sqlalchemy as sa
 from grz_common.cli import config_file
-from grz_db.models.submission import ChangeRequestEnum, ChangeRequestLog, Submission, SubmissionDb, SubmissionStateEnum
-from grz_pydantic_models.submission.metadata import GenomicStudyType, SubmissionType
+from grz_db.models.submission import (
+    ChangeRequestEnum,
+    ChangeRequestLog,
+    DetailedQCResult,
+    Submission,
+    SubmissionDb,
+    SubmissionStateEnum,
+)
+from grz_pydantic_models.submission.metadata import GenomicStudyType, Relation, SubmissionType
 from sqlalchemy import func as sqlfn
 from sqlmodel import select
 
@@ -322,6 +330,91 @@ def _dump_dataset_report(output_path: Path, database: SubmissionDb, year: int, q
             )
 
 
+def _dump_qc_report(output_path: Path, database: SubmissionDb, year: int, quarter: int) -> None:
+    quarter_start_date, quarter_end_date = _get_quarter_date_bounds(year=year, quarter=quarter)
+
+    with database._get_session() as session:
+        query_submissions_that_failed_detailed_qc = (
+            select(Submission)
+            .where(Submission.submission_date.between(quarter_start_date, quarter_end_date))  # type: ignore[union-attr]
+            .filter(sa.not_(Submission.detailed_qc_passed))  # type: ignore[call-overload]
+        )
+        submissions_that_failed_detailed_qc = session.exec(query_submissions_that_failed_detailed_qc).all()
+        query_reports_of_failed_submissions = select(DetailedQCResult).join(
+            query_submissions_that_failed_detailed_qc.subquery()
+        )
+        reports_of_failed_submissions = session.exec(query_reports_of_failed_submissions).all()
+
+    id2submission = {submission.id: submission for submission in submissions_that_failed_detailed_qc}
+    with open(output_path, mode="w", encoding="utf-8", newline="") as output_file:
+        writer = csv.writer(output_file, delimiter="\t")
+        # header
+        writer.writerow(
+            [
+                "genomicDataCenterId",
+                "quarter",
+                "year",
+                "submitterId",
+                "submissionDate",
+                "submissionType",
+                "diseaseType",
+                "genomicStudyType",
+                "genomicStudySubtype",
+                "relation",
+                "sequenceType",
+                "sequenceSubtype",
+                "libraryType",
+                "percentBasesAboveQualityThreshold.minimumQuality",
+                "percentBasesAboveQualityThreshold.percent",
+                "percentBasesAboveQualityThreshold_detailedQC_passed",
+                "percentBasesAboveQualityThreshold_detailedQC_deviation%",
+                "meanDepthOfCoverage",
+                "meanDepthOfCoverage_detailedQC_passed",
+                "meanDepthOfCoverage_detailedQC_deviation%",
+                "minCoverage",
+                "targetedRegionsAboveMinCoverage",
+                "targetedRegionsAboveMinCoverage_detailedQC_passed",
+                "targetedRegionsAboveMinCoverage_detailedQC_deviation%",
+            ]
+        )
+
+        for report in reports_of_failed_submissions:
+            submission = id2submission[report.submission_id]
+            # TODO: join on consent table with donor pseudonym to get relation
+            lab_datum_id_match = re.match(r"([A-z]+)([0-9]+)_([A-z]+)([0-9]+)", report.lab_datum_id)
+            if lab_datum_id_match is None:
+                raise ValueError(f"Failed to parse lab datum ID '{report.lab_datum_id}'")
+            relation = Relation(lab_datum_id_match.group(1))
+            writer.writerow(
+                [
+                    submission.data_node_id,
+                    quarter,
+                    year,
+                    submission.submitter_id,
+                    submission.submission_date,
+                    submission.submission_type,
+                    submission.disease_type,
+                    submission.genomic_study_type,
+                    submission.genomic_study_subtype,
+                    relation,
+                    report.sequence_type,
+                    report.sequence_subtype,
+                    report.library_type,
+                    report.percent_bases_above_quality_threshold_minimum_quality,
+                    report.percent_bases_above_quality_threshold_percent,
+                    "yes" if report.percent_bases_above_quality_threshold_passed_qc else "no",
+                    report.percent_bases_above_quality_threshold_percent_deviation,
+                    report.mean_depth_of_coverage,
+                    "yes" if report.mean_depth_of_coverage_passed_qc else "no",
+                    report.mean_depth_of_coverage_percent_deviation,
+                    report.targeted_regions_min_coverage,
+                    report.targeted_regions_above_min_coverage,
+                    "yes" if report.targeted_regions_above_min_coverage_passed_qc else "no",
+                    report.targeted_regions_above_min_coverage_percent_deviation,
+                ]
+            )
+
+
 @report.command()
 @click.option(
     "--quarter",
@@ -379,3 +472,6 @@ def quarterly(ctx: click.Context, year: int | None, quarter: int | None, output_
 
     dataset_output_path = output_directory / "Infos_zu_Datensätzen.tsv"
     _dump_dataset_report(dataset_output_path, submission_db, year, quarter)
+
+    qc_output_path = output_directory / "Detailprüfung.tsv"
+    _dump_qc_report(qc_output_path, submission_db, year, quarter)
