@@ -3,10 +3,12 @@
 import calendar
 import csv
 import datetime
+import itertools
 import logging
 import re
 import typing
 from collections import defaultdict
+from operator import attrgetter
 from pathlib import Path
 
 import click
@@ -15,6 +17,7 @@ from grz_common.cli import config_file
 from grz_db.models.submission import (
     ChangeRequestEnum,
     ChangeRequestLog,
+    ConsentRecord,
     DetailedQCResult,
     Submission,
     SubmissionDb,
@@ -263,10 +266,28 @@ def _dump_dataset_report(output_path: Path, database: SubmissionDb, year: int, q
     quarter_start_date, quarter_end_date = _get_quarter_date_bounds(year=year, quarter=quarter)
 
     with database._get_session() as session:
-        stmt_submissions = (
+        query_quarter_submissions = (
             select(Submission).where(Submission.submission_date.between(quarter_start_date, quarter_end_date))  # type: ignore[union-attr]
         )
-        submissions = session.exec(stmt_submissions).all()
+        submissions = session.exec(query_quarter_submissions).all()
+
+        subquery_quarter_submissions = query_quarter_submissions.subquery()
+        query_consent_records = select(ConsentRecord).join(
+            subquery_quarter_submissions, subquery_quarter_submissions.c.id == ConsentRecord.submission_id
+        )
+        consent_records = session.exec(query_consent_records).all()
+        id2no_scope_justifications = {}
+        for submission_id, submission_consent_records in itertools.groupby(
+            sorted(consent_records, key=attrgetter("submission_id")), key=attrgetter("submission_id")
+        ):
+            justifications = []
+            for record in submission_consent_records:
+                justifications.append(
+                    "NA"
+                    if record.research_consent_missing_justification is None
+                    else record.research_consent_missing_justification
+                )
+            id2no_scope_justifications[submission_id] = ";".join(justifications)
 
     with open(output_path, mode="w", encoding="utf-8", newline="") as output_file:
         writer = csv.writer(output_file, delimiter="\t")
@@ -299,13 +320,6 @@ def _dump_dataset_report(output_path: Path, database: SubmissionDb, year: int, q
             if submission.detailed_qc_passed is not None:
                 detailed_qc_passed = "yes" if submission.detailed_qc_passed else "no"
 
-            if submission.sequence_types_index is None:
-                raise ValueError(f"Submission to be reported '{submission.id}' has a null sequence_types_index")
-            if submission.library_types_index is None:
-                raise ValueError(f"Submission to be reported '{submission.id}' has a null library_types_index")
-            if submission.sequence_subtypes_index is None:
-                raise ValueError(f"Submission to be reported '{submission.id}' has a null sequence_subtypes_index")
-
             writer.writerow(
                 [
                     submission.data_node_id,
@@ -313,19 +327,25 @@ def _dump_dataset_report(output_path: Path, database: SubmissionDb, year: int, q
                     year,
                     submission.submitter_id,
                     submission.submission_type,
-                    "NA",  # FIXME: add coverage type to migration/populate
+                    submission.coverage_type,
                     submission.disease_type,
-                    ";".join(sorted(submission.sequence_types_index)),
-                    ";".join(sorted(submission.library_types_index)),
+                    ";".join(sorted(submission.sequence_types_index))
+                    if submission.sequence_types_index is not None
+                    else "NA",
+                    ";".join(sorted(submission.library_types_index))
+                    if submission.library_types_index is not None
+                    else "NA",
                     "yes" if submission.basic_qc_passed else "no",
                     "yes",  # currently MV consent is required to validate, need to update this
                     "yes" if submission.consented else "no",
-                    "NA",  # FIXME: query consent table and join all donors with semicolon
+                    id2no_scope_justifications[submission.id],
                     detailed_qc_passed,
                     submission.genomic_study_type,
                     submission.genomic_study_subtype,
                     "index",
-                    ";".join(sorted(submission.sequence_subtypes_index)),
+                    ";".join(sorted(submission.sequence_subtypes_index))
+                    if submission.sequence_subtypes_index is not None
+                    else "NA",
                 ]
             )
 

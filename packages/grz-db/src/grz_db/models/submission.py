@@ -10,6 +10,7 @@ from alembic.config import Config as AlembicConfig
 from alembic.runtime.migration import MigrationContext
 from alembic.script import ScriptDirectory as AlembicScriptDirectory
 from grz_pydantic_models.submission.metadata import (
+    CoverageType,
     DiseaseType,
     GenomicDataCenterId,
     GenomicStudySubtype,
@@ -105,6 +106,7 @@ class SubmissionBase(SQLModel):
     submission_type: SubmissionType | None = None
     submitter_id: SubmitterId | None = None
     data_node_id: GenomicDataCenterId | None = None
+    coverage_type: CoverageType | None = None
     disease_type: DiseaseType | None = None
     library_types_index: set[LibraryType] | None = Field(sa_column=Column(SemicolonSeparatedStringSet), default=None)
     sequence_types_index: set[SequenceType] | None = Field(sa_column=Column(SemicolonSeparatedStringSet), default=None)

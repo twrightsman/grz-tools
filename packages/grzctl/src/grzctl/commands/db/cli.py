@@ -468,6 +468,7 @@ def _diff_metadata(  # noqa: C901
         "submission_date",
         "submission_type",
         "submitter_id",
+        "coverage_type",
         "disease_type",
         "genomic_study_type",
         "genomic_study_subtype",

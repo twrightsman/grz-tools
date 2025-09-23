@@ -33,6 +33,12 @@ def upgrade() -> None:
                 sa.Enum("tumor_only", "tumor_germline", "germline_only", name="genomicstudysubtype"),
             ),
         )
+        batch_op.add_column(
+            sa.Column(
+                "coverage_type",
+                sa.Enum("GKV", "PKV", "BG", "SEL", "SOZ", "GPV", "PPV", "BEI", "SKT", "UNK", name="coveragetype"),
+            )
+        )
         batch_op.add_column(sa.Column("sequence_types_index", AutoString()))
         batch_op.add_column(sa.Column("sequence_subtypes_index", AutoString()))
 
