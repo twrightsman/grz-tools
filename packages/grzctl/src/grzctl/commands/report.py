@@ -119,36 +119,98 @@ def _get_consent_revocations(
     """
     Revocation is defined as consent state changing from True to False for a
     donor based on metadata in a submission from this reporting quarter.
+
+    A donor pseudonym is only unique within a single submitter.
+
+    The basic algorithm is:
+    1.) Build a map of donors to their consent state at the end of the current quarter.
+    2.) Build a map of donors to their consent state at the end of the prior quarter.
+    3.) Return donors that were consented at end of prior quarter but are no longer as of end of current quarter.
     """
-    # index pseudonym comes from submission table pseudonym, which is only unique by submitter!
     subquery_quarter_submissions = (
         select(Submission)
         .where(Submission.submission_date.between(quarter_start_date, quarter_end_date))  # type: ignore[union-attr]
         .subquery()
     )
-    query_quarter_nonconsent_records = (
+    query_quarter_consent_records = (
         select(
             subquery_quarter_submissions.c.data_node_id,
             subquery_quarter_submissions.c.submitter_id,
             subquery_quarter_submissions.c.pseudonym,
             ConsentRecord,
         )
-        .where(sa.or_(sa.not_(ConsentRecord.mv_consented), sa.not_(ConsentRecord.research_consented)))  # type: ignore[call-overload]
         .join(subquery_quarter_submissions, subquery_quarter_submissions.c.id == ConsentRecord.submission_id)
+        .order_by(subquery_quarter_submissions.c.submission_date)
     )
-    quarter_nonconsent_records = session.exec(query_quarter_nonconsent_records).all()
+    quarter_consent_records = session.exec(query_quarter_consent_records).all()
+
+    # key is (data_node_id, submitter_id, pseudonym, mv|research)
+    end_of_quarter_consent_state_by_donor: dict[tuple[str, str, str, str], bool] = {}
+    for data_node_id, submitter_id, index_pseudonym, record in quarter_consent_records:
+        # iterate over consent records from earliest submission to latest, later overriding earlier
+        end_of_quarter_consent_state_by_donor[
+            (
+                data_node_id,
+                submitter_id,
+                index_pseudonym if record.relation == Relation.index_ else record.pseudonym,
+                "mv",
+            )
+        ] = record.mv_consented
+        end_of_quarter_consent_state_by_donor[
+            (
+                data_node_id,
+                submitter_id,
+                index_pseudonym if record.relation == Relation.index_ else record.pseudonym,
+                "research",
+            )
+        ] = record.research_consented
+
+    # now query before the current quarter
+    subquery_prior_submissions = select(Submission).where(Submission.submission_date < quarter_start_date).subquery()
+    query_prior_consent_records = (
+        select(
+            subquery_prior_submissions.c.data_node_id,
+            subquery_prior_submissions.c.submitter_id,
+            subquery_prior_submissions.c.pseudonym,
+            ConsentRecord,
+        )
+        .join(subquery_prior_submissions, subquery_prior_submissions.c.id == ConsentRecord.submission_id)
+        .order_by(subquery_prior_submissions.c.submission_date)
+    )
+    prior_consent_records = session.exec(query_prior_consent_records).all()
+
+    prior_consent_state_by_donor: dict[tuple[str, str, str, str], bool] = {}
+    for data_node_id, submitter_id, index_pseudonym, record in prior_consent_records:
+        # iterate over consent records from earliest submission to latest, later overriding earlier
+        prior_consent_state_by_donor[
+            (
+                data_node_id,
+                submitter_id,
+                index_pseudonym if record.relation == Relation.index_ else record.pseudonym,
+                "mv",
+            )
+        ] = record.mv_consented
+        prior_consent_state_by_donor[
+            (
+                data_node_id,
+                submitter_id,
+                index_pseudonym if record.relation == Relation.index_ else record.pseudonym,
+                "research",
+            )
+        ] = record.research_consented
 
     number_of_consent_revocations: defaultdict[tuple[str, str, str, str], int] = defaultdict(int)
-    for data_node_id, submitter_id, _index_pseudonym, record in quarter_nonconsent_records:
-        # FIXME: need to check consent status at end of last quarter
-        if not record.mv_consented:
-            number_of_consent_revocations[
-                (data_node_id, submitter_id, "mv", "index" if record.relation == Relation.index_ else "not-index")
-            ] += 1
-        if not record.research_consented:
-            number_of_consent_revocations[
-                (data_node_id, submitter_id, "research", "index" if record.relation == Relation.index_ else "not-index")
-            ] += 1
+    for (
+        data_node_id,
+        submitter_id,
+        pseudonym,
+        consent_type,
+    ), consented in end_of_quarter_consent_state_by_donor.items():
+        previously_consented = prior_consent_state_by_donor.get(
+            (data_node_id, submitter_id, pseudonym, consent_type), False
+        )
+        if previously_consented and not consented:
+            number_of_consent_revocations[(data_node_id, submitter_id, pseudonym, consent_type)] += 1
 
     return number_of_consent_revocations
 
