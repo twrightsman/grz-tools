@@ -108,11 +108,6 @@ class SubmissionBase(SQLModel):
     data_node_id: GenomicDataCenterId | None = None
     coverage_type: CoverageType | None = None
     disease_type: DiseaseType | None = None
-    library_types_index: set[LibraryType] | None = Field(sa_column=Column(SemicolonSeparatedStringSet), default=None)
-    sequence_types_index: set[SequenceType] | None = Field(sa_column=Column(SemicolonSeparatedStringSet), default=None)
-    sequence_subtypes_index: set[SequenceSubtype] | None = Field(
-        sa_column=Column(SemicolonSeparatedStringSet), default=None
-    )
     basic_qc_passed: bool | None = None
 
     # fields also for Tätigkeitsbericht
@@ -262,14 +257,17 @@ class ChangeRequestLogCreate(ChangeRequestLogBase):
     signature: str
 
 
-class ConsentRecord(SQLModel, table=True):
-    """Donor consent record model."""
+class Donor(SQLModel, table=True):
+    """Donor database model."""
 
-    __tablename__ = "consent_records"
+    __tablename__ = "donors"
 
     submission_id: str = Field(foreign_key="submissions.id", primary_key=True)
-    pseudonym: str = Field(foreign_key="submissions.pseudonym", primary_key=True)
+    pseudonym: str = Field(primary_key=True)
     relation: Relation
+    library_types: set[LibraryType] = Field(sa_column=Column(SemicolonSeparatedStringSet))
+    sequence_types: set[SequenceType] = Field(sa_column=Column(SemicolonSeparatedStringSet))
+    sequence_subtypes: set[SequenceSubtype] = Field(sa_column=Column(SemicolonSeparatedStringSet))
     mv_consented: bool
     research_consented: bool | None = None
     research_consent_missing_justification: ResearchConsentNoScopeJustification | None = None
@@ -282,6 +280,7 @@ class DetailedQCResult(SQLModel, table=True):
 
     submission_id: str = Field(foreign_key="submissions.id", primary_key=True)
     lab_datum_id: str = Field(primary_key=True)
+    pseudonym: str
     timestamp: datetime.datetime = Field(
         default_factory=lambda: datetime.datetime.now(datetime.UTC),
         sa_column=Column(DateTime(timezone=True), nullable=False),
@@ -472,32 +471,32 @@ class SubmissionDb:
                 session.rollback()
                 raise
 
-    def get_consent_records(self, submission_id: str, pseudonym: str | None = None) -> tuple[ConsentRecord, ...]:
-        """Retrieve all consent records for a given submission, or, optionally, only for a specific pseudonym."""
+    def get_donors(self, submission_id: str, pseudonym: str | None = None) -> tuple[Donor, ...]:
+        """Retrieve all donors for a given submission, or, optionally, only for a specific pseudonym."""
         with self._get_session() as session:
-            statement = select(ConsentRecord).where(ConsentRecord.submission_id == submission_id)
+            statement = select(Donor).where(Donor.submission_id == submission_id)
             if pseudonym is not None:
-                statement = statement.where(ConsentRecord.pseudonym == pseudonym)
-            records = tuple(session.exec(statement).all())
-        return records
+                statement = statement.where(Donor.pseudonym == pseudonym)
+            donors = tuple(session.exec(statement).all())
+        return donors
 
-    def add_consent_record(self, record: ConsentRecord) -> ConsentRecord:
-        """Add or update a consent record to/in the database."""
+    def add_donor(self, donor: Donor) -> Donor:
+        """Add or update a donor to/in the database."""
         with self._get_session() as session:
-            session.add(record)
+            session.add(donor)
 
             try:
                 session.commit()
-                session.refresh(record)
-                return record
+                session.refresh(donor)
+                return donor
             except Exception as e:
                 session.rollback()
                 raise e
 
-    def delete_consent_record(self, record: ConsentRecord) -> None:
-        """Delete a consent record from the database."""
+    def delete_donor(self, donor: Donor) -> None:
+        """Delete a donor from the database."""
         with self._get_session() as session:
-            session.delete(record)
+            session.delete(donor)
 
             try:
                 session.commit()

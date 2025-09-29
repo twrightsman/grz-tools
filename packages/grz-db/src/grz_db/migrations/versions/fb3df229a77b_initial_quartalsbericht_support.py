@@ -22,29 +22,9 @@ depends_on: str | Sequence[str] | None = None
 
 def upgrade() -> None:
     """Upgrade schema."""
-    # we have to batch alter because SQLite doesn't support ALTER on column types
-    with op.batch_alter_table("submissions") as batch_op:
-        # modified/extra submission table columns
-        batch_op.alter_column("library_type", type_=AutoString(), new_column_name="library_types_index")
-        batch_op.add_column(sa.Column("genomic_study_type", sa.Enum("single", "duo", "trio", name="genomicstudytype")))
-        batch_op.add_column(
-            sa.Column(
-                "genomic_study_subtype",
-                sa.Enum("tumor_only", "tumor_germline", "germline_only", name="genomicstudysubtype"),
-            ),
-        )
-        batch_op.add_column(
-            sa.Column(
-                "coverage_type",
-                sa.Enum("GKV", "PKV", "BG", "SEL", "SOZ", "GPV", "PPV", "BEI", "SKT", "UNK", name="coveragetype"),
-            )
-        )
-        batch_op.add_column(sa.Column("sequence_types_index", AutoString()))
-        batch_op.add_column(sa.Column("sequence_subtypes_index", AutoString()))
-
-    # new consent record table
+    # new donors table
     op.create_table(
-        "consent_records",
+        "donors",
         sa.Column(
             "submission_id",
             AutoString(),
@@ -55,15 +35,17 @@ def upgrade() -> None:
         sa.Column(
             "pseudonym",
             AutoString(),
-            ForeignKey("submissions.pseudonym"),
             primary_key=True,
             nullable=False,
         ),
         sa.Column(
             "relation",
-            sa.Enum("mother", "father", "brother", "sister", "child", "index_", "other", name="relation"),
+            sa.Enum("mother", "father", "brother", "sister", "child", "index", "other", name="relation"),
             nullable=False,
         ),
+        sa.Column("library_types", AutoString(), nullable=False),
+        sa.Column("sequence_types", AutoString(), nullable=False),
+        sa.Column("sequence_subtypes", AutoString(), nullable=False),
         sa.Column("mv_consented", sa.Boolean(), nullable=False),
         sa.Column("research_consented", sa.Boolean(), nullable=False),
         sa.Column(
@@ -77,8 +59,28 @@ def upgrade() -> None:
                 "LE_ORG",
                 name="researchconsentnoscopejustification",
             ),
+            nullable=False,
         ),
     )
+
+    # we have to batch alter because SQLite doesn't support ALTER on column types
+    with op.batch_alter_table("submissions") as batch_op:
+        # will need to be repopulated in donors table before reporting, so just drop
+        batch_op.drop_column("library_type")
+        # modified/extra submission table columns
+        batch_op.add_column(sa.Column("genomic_study_type", sa.Enum("single", "duo", "trio", name="genomicstudytype")))
+        batch_op.add_column(
+            sa.Column(
+                "genomic_study_subtype",
+                sa.Enum("tumor_only", "tumor_germline", "germline_only", name="genomicstudysubtype"),
+            ),
+        )
+        batch_op.add_column(
+            sa.Column(
+                "coverage_type",
+                sa.Enum("GKV", "PKV", "BG", "SEL", "SOZ", "GPV", "PPV", "BEI", "SKT", "UNK", name="coveragetype"),
+            )
+        )
 
     # new detailed QC results table
     op.create_table(
@@ -91,6 +93,7 @@ def upgrade() -> None:
             nullable=False,
         ),
         sa.Column("lab_datum_id", AutoString(), primary_key=True, nullable=False),
+        sa.Column("pseudonym", AutoString(), ForeignKey("donors.pseudonym"), nullable=False),
         sa.Column("timestamp", sa.DateTime(timezone=True), nullable=False),
         sa.Column("sequence_type", sa.Enum("dna", "rna", name="sequencetype"), nullable=False),
         sa.Column(

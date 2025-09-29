@@ -32,8 +32,8 @@ from grz_db.models.author import Author
 from grz_db.models.submission import (
     ChangeRequestEnum,
     ChangeRequestLog,
-    ConsentRecord,
     DetailedQCResult,
+    Donor,
     Submission,
     SubmissionDb,
     SubmissionStateEnum,
@@ -457,7 +457,7 @@ def modify(ctx: click.Context, submission_id: str, key: str, value: str):
         raise click.ClickException(f"Failed to update submission state: {e}") from e
 
 
-def _diff_metadata(  # noqa: C901
+def _diff_metadata(
     submission: Submission, metadata: GrzSubmissionMetadata, ignore_fields: set[str]
 ) -> list[tuple[str, Any, Any]]:
     """Given a database submission and a metadata.json file, report changed fields and their before/after values if they are not in ignore_fields."""
@@ -498,27 +498,6 @@ def _diff_metadata(  # noqa: C901
     if "data_node_id" not in ignore_fields and (submission.data_node_id != metadata.submission.genomic_data_center_id):
         changes.append(("data_node_id", submission.data_node_id, metadata.submission.genomic_data_center_id))
 
-    # index library types
-    metadata_library_types_index = {datum.library_type for datum in metadata.index_donor.lab_data}
-    if "library_types_index" not in ignore_fields and (submission.library_types_index != metadata_library_types_index):
-        changes.append(("library_types_index", submission.library_types_index, metadata_library_types_index))
-
-    # index sequence types
-    metadata_sequence_types_index = {datum.sequence_type for datum in metadata.index_donor.lab_data}
-    if "sequence_types_index" not in ignore_fields and (
-        submission.sequence_types_index != metadata_sequence_types_index
-    ):
-        changes.append(("sequence_types_index", submission.sequence_types_index, metadata_sequence_types_index))
-
-    # index sequence subtypes
-    metadata_sequence_subtypes_index = {datum.sequence_subtype for datum in metadata.index_donor.lab_data}
-    if "sequence_subtypes_index" not in ignore_fields and (
-        submission.sequence_subtypes_index != metadata_sequence_subtypes_index
-    ):
-        changes.append(
-            ("sequence_subtypes_index", submission.sequence_subtypes_index, metadata_sequence_subtypes_index)
-        )
-
     # consent state
     consented = metadata.consents_to_research(date=date.today())
     if submission.consented != consented:
@@ -527,51 +506,54 @@ def _diff_metadata(  # noqa: C901
     return changes
 
 
-def _diff_consent_records(
-    records_in_db: tuple[ConsentRecord, ...], metadata: GrzSubmissionMetadata
-) -> tuple[tuple[ConsentRecord, ...], tuple[ConsentRecord, ...], tuple[rich.console.RenderableType, ...]]:
-    pseudonym2before = {record.pseudonym: record for record in records_in_db}
+def _diff_donors(
+    donors_in_db: tuple[Donor, ...], metadata: GrzSubmissionMetadata
+) -> tuple[tuple[Donor, ...], tuple[Donor, ...], tuple[rich.console.RenderableType, ...]]:
+    pseudonym2before = {donor.pseudonym: donor for donor in donors_in_db}
 
-    updated_records = []
+    updated_donors = []
     pending_pseudonyms = set()
-    consent_diff_tables: list[rich.console.RenderableType] = []
+    donor_diff_tables: list[rich.console.RenderableType] = []
     for donor in metadata.donors:
-        record_after = ConsentRecord(
+        donor_after = Donor(
             submission_id=metadata.submission_id,
             pseudonym="index" if donor.relation == Relation.index_ else donor.donor_pseudonym,
             relation=donor.relation,
+            library_types={datum.library_type for datum in donor.lab_data},
+            sequence_types={datum.sequence_type for datum in donor.lab_data},
+            sequence_subtypes={datum.sequence_subtype for datum in donor.lab_data},
             mv_consented=True,  # currently must be true to validate, revisit this to allow revocation
             research_consented=donor.consents_to_research(date=date.today()),
             research_consent_missing_justification=donor.research_consents[0].no_scope_justification
             if donor.research_consents
             else None,
         )
-        record_before = pseudonym2before.get(record_after.pseudonym, None)
-        pending_pseudonyms.add(record_after.pseudonym)
-        if record_before == record_after:
+        donor_before = pseudonym2before.get(donor_after.pseudonym, None)
+        pending_pseudonyms.add(donor_after.pseudonym)
+        if donor_before == donor_after:
             continue
-        updated_records.append(record_after)
+        updated_donors.append(donor_after)
 
-        table_title = f"[green]Donor '{record_after.pseudonym}' added/updated[/green]"
+        table_title = f"[green]Donor '{donor_after.pseudonym}' added/updated[/green]"
         diff_table = rich.table.Table(title=table_title, min_width=len(table_title), title_justify="left")
         diff_table.add_column("Key")
         diff_table.add_column("Before")
         diff_table.add_column("After")
-        for field in sorted(record_after.model_fields.keys() - {"submission_id", "pseudonym"}):
-            before = getattr(record_before, field, None)
-            after = getattr(record_after, field)
+        for field in sorted(donor_after.model_fields.keys() - {"submission_id", "pseudonym"}):
+            before = getattr(donor_before, field, None)
+            after = getattr(donor_after, field)
             if before != after:
                 diff_table.add_row(
                     field, _TEXT_MISSING if before is None else rich.pretty.Pretty(before), rich.pretty.Pretty(after)
                 )
         if diff_table.row_count:
-            consent_diff_tables.append(diff_table)
+            donor_diff_tables.append(diff_table)
 
-    deleted_records = tuple(filter(lambda r: r.pseudonym not in pending_pseudonyms, pseudonym2before.values()))
-    for deleted_record in deleted_records:
-        consent_diff_tables.append(rich.text.Text(f"Donor {deleted_record.pseudonym} deleted", style="red"))
+    deleted_donors = tuple(filter(lambda donor: donor.pseudonym not in pending_pseudonyms, pseudonym2before.values()))
+    for deleted_donor in deleted_donors:
+        donor_diff_tables.append(rich.text.Text(f"Donor {deleted_donor.pseudonym} deleted", style="red"))
 
-    return tuple(updated_records), deleted_records, tuple(consent_diff_tables)
+    return tuple(updated_donors), deleted_donors, tuple(donor_diff_tables)
 
 
 @submission.command()
@@ -590,7 +572,7 @@ def _diff_consent_records(
 @click.pass_context
 def populate(ctx: click.Context, submission_id: str, metadata_path: str, confirm: bool, ignore_field: list[str]):  # noqa: C901
     """Populate the submission database from a metadata JSON file."""
-    log.debug(f"Ignored fields for populate: {ignore_field}")
+    log.debug("Ignored fields for populate: %s", ignore_field)
 
     db = ctx.obj["db_url"]
     db_service = get_submission_db_instance(db, author=ctx.obj["author"])
@@ -608,17 +590,17 @@ def populate(ctx: click.Context, submission_id: str, metadata_path: str, confirm
         traceback.print_exc()
         raise click.ClickException(f"Failed to update submission state: {e}") from e
 
-    with open(metadata_path) as metadata_file:
+    with open(metadata_path, encoding="utf-8") as metadata_file:
         metadata = GrzSubmissionMetadata.model_validate_json(metadata_file.read())
 
     changes = _diff_metadata(submission, metadata, set(ignore_field))
 
     # consent records
-    updated_records, deleted_records, consent_diff_tables = _diff_consent_records(
-        records_in_db=db_service.get_consent_records(submission_id=Submission.id), metadata=metadata
+    updated_donors, deleted_donors, donor_diff_tables = _diff_donors(
+        donors_in_db=db_service.get_donors(submission_id=Submission.id), metadata=metadata
     )
 
-    if (not changes) and (not updated_records) and (not deleted_records):
+    if (not changes) and (not updated_donors) and (not deleted_donors):
         console_err.print("[green]Database is already up to date with the provided metadata![/green]")
         ctx.exit()
 
@@ -633,9 +615,7 @@ def populate(ctx: click.Context, submission_id: str, metadata_path: str, confirm
     else:
         diff_table = rich.padding.Padding(rich.text.Text("No changes to submission-level metadata."), pad=(0, 0, 1, 0))
 
-    panel = rich.panel.Panel.fit(
-        rich.console.Group(diff_table, *consent_diff_tables, fit=True), title="Pending Changes"
-    )
+    panel = rich.panel.Panel.fit(rich.console.Group(diff_table, *donor_diff_tables, fit=True), title="Pending Changes")
     console.print(panel)
 
     if not confirm or click.confirm(
@@ -645,10 +625,10 @@ def populate(ctx: click.Context, submission_id: str, metadata_path: str, confirm
     ):
         for key, _before, after in changes:
             _ = db_service.modify_submission(submission_id, key=key, value=after)
-        for updated_record in updated_records:
-            _ = db_service.add_consent_record(updated_record)
-        for deleted_record in deleted_records:
-            db_service.delete_consent_record(deleted_record)
+        for updated_donor in updated_donors:
+            _ = db_service.add_donor(updated_donor)
+        for deleted_donor in deleted_donors:
+            db_service.delete_donor(deleted_donor)
         console_err.print("[green]Database populated successfully.[/green]")
 
 
@@ -713,6 +693,7 @@ def populate_qc(ctx: click.Context, submission_id: str, report_csv_path: str, co
             DetailedQCResult(
                 submission_id=submission_id,
                 lab_datum_id=report.sample_id,
+                pseudonym=report.donor_pseudonym,
                 timestamp=report_mtime,
                 sequence_type=SequenceType.dna,  # pipeline only supports DNA and doesn't pass type to report.csv
                 sequence_subtype=report.sequence_subtype,
@@ -735,6 +716,7 @@ def populate_qc(ctx: click.Context, submission_id: str, report_csv_path: str, co
     table = rich.table.Table(
         "Submission ID",
         "Lab Datum ID",
+        "Pseudonym",
         "Timestamp",
         "Sequence Type",
         "Sequence Subtype",
@@ -748,6 +730,7 @@ def populate_qc(ctx: click.Context, submission_id: str, report_csv_path: str, co
         table.add_row(
             result.submission_id,
             result.lab_datum_id,
+            result.pseudonym,
             f"{result.timestamp:%c}",
             result.sequence_type,
             result.sequence_subtype,
@@ -832,9 +815,6 @@ def show(ctx: click.Context, submission_id: str):
         ("Disease Type", "disease_type"),
         ("Genomic Study Type", "genomic_study_type"),
         ("Genomic Study Subtype", "genomic_study_subtype"),
-        ("Index Library Types", "library_types_index"),
-        ("Index Sequence Types", "sequence_types_index"),
-        ("Index Sequence Subtypes", "sequence_subtypes_index"),
         ("Basic QC Passed", "basic_qc_passed"),
         ("Consented", "consented"),
         ("Detailed QC Passed", "detailed_qc_passed"),

@@ -5,9 +5,9 @@ import csv
 import datetime
 import itertools
 import logging
-import re
 import typing
 from collections import defaultdict
+from enum import StrEnum
 from operator import attrgetter
 from pathlib import Path
 
@@ -17,8 +17,8 @@ from grz_common.cli import config_file
 from grz_db.models.submission import (
     ChangeRequestEnum,
     ChangeRequestLog,
-    ConsentRecord,
     DetailedQCResult,
+    Donor,
     Submission,
     SubmissionDb,
     SubmissionStateEnum,
@@ -132,72 +132,77 @@ def _get_consent_revocations(
         .where(Submission.submission_date.between(quarter_start_date, quarter_end_date))  # type: ignore[union-attr]
         .subquery()
     )
-    query_quarter_consent_records = (
+    query_quarter_donors = (
         select(
             subquery_quarter_submissions.c.data_node_id,
             subquery_quarter_submissions.c.submitter_id,
             subquery_quarter_submissions.c.pseudonym,
-            ConsentRecord,
+            Donor,
         )
-        .join(subquery_quarter_submissions, subquery_quarter_submissions.c.id == ConsentRecord.submission_id)
+        .join(subquery_quarter_submissions, subquery_quarter_submissions.c.id == Donor.submission_id)
         .order_by(subquery_quarter_submissions.c.submission_date)
     )
-    quarter_consent_records = session.exec(query_quarter_consent_records).all()
+    quarter_donors = session.exec(query_quarter_donors).all()
 
     # key is (data_node_id, submitter_id, pseudonym, mv|research)
     end_of_quarter_consent_state_by_donor: dict[tuple[str, str, str, str], bool] = {}
-    for data_node_id, submitter_id, index_pseudonym, record in quarter_consent_records:
-        # iterate over consent records from earliest submission to latest, later overriding earlier
+    # iterate over donors from earliest submission to latest, later overriding earlier
+    for data_node_id, submitter_id, index_pseudonym, donor in quarter_donors:
+        pseudonym = index_pseudonym if donor.relation == Relation.index_ else donor.pseudonym
         end_of_quarter_consent_state_by_donor[
             (
                 data_node_id,
                 submitter_id,
-                index_pseudonym if record.relation == Relation.index_ else record.pseudonym,
+                pseudonym,
                 "mv",
             )
-        ] = record.mv_consented
+        ] = donor.mv_consented
         end_of_quarter_consent_state_by_donor[
             (
                 data_node_id,
                 submitter_id,
-                index_pseudonym if record.relation == Relation.index_ else record.pseudonym,
+                pseudonym,
                 "research",
             )
-        ] = record.research_consented
+        ] = donor.research_consented
 
     # now query before the current quarter
     subquery_prior_submissions = select(Submission).where(Submission.submission_date < quarter_start_date).subquery()
-    query_prior_consent_records = (
+    query_prior_donors = (
         select(
             subquery_prior_submissions.c.data_node_id,
             subquery_prior_submissions.c.submitter_id,
             subquery_prior_submissions.c.pseudonym,
-            ConsentRecord,
+            Donor,
         )
-        .join(subquery_prior_submissions, subquery_prior_submissions.c.id == ConsentRecord.submission_id)
+        .join(subquery_prior_submissions, subquery_prior_submissions.c.id == Donor.submission_id)
         .order_by(subquery_prior_submissions.c.submission_date)
     )
-    prior_consent_records = session.exec(query_prior_consent_records).all()
+    prior_donors = session.exec(query_prior_donors).all()
 
     prior_consent_state_by_donor: dict[tuple[str, str, str, str], bool] = {}
-    for data_node_id, submitter_id, index_pseudonym, record in prior_consent_records:
-        # iterate over consent records from earliest submission to latest, later overriding earlier
-        prior_consent_state_by_donor[
-            (
-                data_node_id,
-                submitter_id,
-                index_pseudonym if record.relation == Relation.index_ else record.pseudonym,
-                "mv",
-            )
-        ] = record.mv_consented
-        prior_consent_state_by_donor[
-            (
-                data_node_id,
-                submitter_id,
-                index_pseudonym if record.relation == Relation.index_ else record.pseudonym,
-                "research",
-            )
-        ] = record.research_consented
+    # iterate over donors from earliest submission to latest, later overriding earlier
+    for data_node_id, submitter_id, index_pseudonym, donor in prior_donors:
+        pseudonym = index_pseudonym if donor.relation == Relation.index_ else donor.pseudonym
+        # skip over donors that don't show up in current quarter
+        if (data_node_id, submitter_id, pseudonym, "mv") in end_of_quarter_consent_state_by_donor:
+            prior_consent_state_by_donor[
+                (
+                    data_node_id,
+                    submitter_id,
+                    pseudonym,
+                    "mv",
+                )
+            ] = donor.mv_consented
+        if (data_node_id, submitter_id, pseudonym, "research") in end_of_quarter_consent_state_by_donor:
+            prior_consent_state_by_donor[
+                (
+                    data_node_id,
+                    submitter_id,
+                    pseudonym,
+                    "research",
+                )
+            ] = donor.research_consented
 
     number_of_consent_revocations: defaultdict[tuple[str, str, str, str], int] = defaultdict(int)
     for (
@@ -351,6 +356,12 @@ def _dump_overview_report(output_path: Path, database: SubmissionDb, year: int, 
             )
 
 
+class DetailedQCPassedReportState(StrEnum):
+    NOT_PERFORMED = "not_performed"
+    YES = "yes"
+    NO = "no"
+
+
 def _dump_dataset_report(output_path: Path, database: SubmissionDb, year: int, quarter: int) -> None:
     quarter_start_date, quarter_end_date = _get_quarter_date_bounds(year=year, quarter=quarter)
 
@@ -361,22 +372,37 @@ def _dump_dataset_report(output_path: Path, database: SubmissionDb, year: int, q
         submissions = session.exec(query_quarter_submissions).all()
 
         subquery_quarter_submissions = query_quarter_submissions.subquery()
-        query_consent_records = select(ConsentRecord).join(
-            subquery_quarter_submissions, subquery_quarter_submissions.c.id == ConsentRecord.submission_id
+        query_donors = select(Donor).join(
+            subquery_quarter_submissions, subquery_quarter_submissions.c.id == Donor.submission_id
         )
-        consent_records = session.exec(query_consent_records).all()
+        donors = session.exec(query_donors).all()
+
+        id2sequence_types_index = {}
+        id2sequence_subtypes_index = {}
+        id2library_types_index = {}
         id2no_scope_justifications = {}
-        for submission_id, submission_consent_records in itertools.groupby(
-            sorted(consent_records, key=attrgetter("submission_id")), key=attrgetter("submission_id")
+        for submission_id, submission_donors in itertools.groupby(
+            sorted(donors, key=attrgetter("submission_id")), key=attrgetter("submission_id")
         ):
+            sequence_types_index = "NA"
+            sequence_subtypes_index = "NA"
+            library_types_index = "NA"
             justifications = []
-            for record in submission_consent_records:
+            for donor in submission_donors:
                 justifications.append(
                     "NA"
-                    if record.research_consent_missing_justification is None
-                    else record.research_consent_missing_justification
+                    if donor.research_consent_missing_justification is None
+                    else donor.research_consent_missing_justification
                 )
-            id2no_scope_justifications[submission_id] = ";".join(justifications)
+                if donor.relation == Relation.index_:
+                    sequence_types_index = ";".join(sorted(donor.sequence_types))
+                    sequence_subtypes_index = ";".join(sorted(donor.sequence_subtypes))
+                    library_types_index = ";".join(sorted(donor.library_types))
+
+            id2no_scope_justifications[submission_id] = ";".join(sorted(justifications))
+            id2sequence_types_index[submission_id] = sequence_types_index
+            id2sequence_subtypes_index[submission_id] = sequence_subtypes_index
+            id2library_types_index[submission_id] = library_types_index
 
     with open(output_path, mode="w", encoding="utf-8", newline="") as output_file:
         writer = csv.writer(output_file, delimiter="\t")
@@ -404,10 +430,11 @@ def _dump_dataset_report(output_path: Path, database: SubmissionDb, year: int, q
             ]
         )
         for submission in submissions:
-            # TODO: make this an enum
-            detailed_qc_passed = "not_performed"
+            detailed_qc_passed = DetailedQCPassedReportState.NOT_PERFORMED
             if submission.detailed_qc_passed is not None:
-                detailed_qc_passed = "yes" if submission.detailed_qc_passed else "no"
+                detailed_qc_passed = (
+                    DetailedQCPassedReportState.YES if submission.detailed_qc_passed else DetailedQCPassedReportState.NO
+                )
 
             writer.writerow(
                 [
@@ -418,12 +445,8 @@ def _dump_dataset_report(output_path: Path, database: SubmissionDb, year: int, q
                     submission.submission_type,
                     submission.coverage_type,
                     submission.disease_type,
-                    ";".join(sorted(submission.sequence_types_index))
-                    if submission.sequence_types_index is not None
-                    else "NA",
-                    ";".join(sorted(submission.library_types_index))
-                    if submission.library_types_index is not None
-                    else "NA",
+                    id2sequence_types_index[submission.id],
+                    id2library_types_index[submission.id],
                     "yes" if submission.basic_qc_passed else "no",
                     "yes",  # currently MV consent is required to validate, need to update this
                     "yes" if submission.consented else "no",
@@ -432,9 +455,7 @@ def _dump_dataset_report(output_path: Path, database: SubmissionDb, year: int, q
                     submission.genomic_study_type,
                     submission.genomic_study_subtype,
                     "index",
-                    ";".join(sorted(submission.sequence_subtypes_index))
-                    if submission.sequence_subtypes_index is not None
-                    else "NA",
+                    id2sequence_subtypes_index[submission.id],
                 ]
             )
 
@@ -449,8 +470,14 @@ def _dump_qc_report(output_path: Path, database: SubmissionDb, year: int, quarte
             .filter(sa.not_(Submission.detailed_qc_passed))  # type: ignore[call-overload]
         )
         submissions_that_failed_detailed_qc = session.exec(query_submissions_that_failed_detailed_qc).all()
-        query_reports_of_failed_submissions = select(DetailedQCResult).join(
-            query_submissions_that_failed_detailed_qc.subquery()
+        query_reports_of_failed_submissions = (
+            select(DetailedQCResult, Donor.relation)
+            .join(query_submissions_that_failed_detailed_qc.subquery())
+            .join(
+                Donor,
+                (DetailedQCResult.submission_id == Donor.submission_id)  # type: ignore[arg-type]
+                & (DetailedQCResult.pseudonym == Donor.pseudonym),
+            )
         )
         reports_of_failed_submissions = session.exec(query_reports_of_failed_submissions).all()
 
@@ -487,13 +514,9 @@ def _dump_qc_report(output_path: Path, database: SubmissionDb, year: int, quarte
             ]
         )
 
-        for report in reports_of_failed_submissions:
+        for report, relation in reports_of_failed_submissions:
             submission = id2submission[report.submission_id]
-            # TODO: join on consent table with donor pseudonym to get relation
-            lab_datum_id_match = re.match(r"([A-z]+)([0-9]+)_([A-z]+)([0-9]+)", report.lab_datum_id)
-            if lab_datum_id_match is None:
-                raise ValueError(f"Failed to parse lab datum ID '{report.lab_datum_id}'")
-            relation = Relation(lab_datum_id_match.group(1))
+            relation = Relation(relation)
             writer.writerow(
                 [
                     submission.data_node_id,
