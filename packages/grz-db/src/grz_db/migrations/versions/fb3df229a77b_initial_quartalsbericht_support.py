@@ -1,4 +1,4 @@
-"""inital Quartalsbericht support
+"""initial Quartalsbericht support
 
 Revision ID: fb3df229a77b
 Revises: 9bf36a91c87e
