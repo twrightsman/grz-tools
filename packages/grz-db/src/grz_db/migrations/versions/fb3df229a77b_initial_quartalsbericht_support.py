@@ -59,7 +59,6 @@ def upgrade() -> None:
                 "LE_ORG",
                 name="researchconsentnoscopejustification",
             ),
-            nullable=False,
         ),
     )
 

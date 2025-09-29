@@ -145,9 +145,9 @@ def test_populate(blank_database_config_path: Path):
     assert submission.pseudonym == metadata.submission.local_case_id
 
     # check that the consent records were populated
-    father = metadata.donors[1]
-    consent_father = db.get_consent_records(submission_id=metadata.submission_id, pseudonym=father.donor_pseudonym)[0]
-    assert father.research_consents[0].no_scope_justification == consent_father.research_consent_missing_justification
+    meta_father = metadata.donors[1]
+    db_father = db.get_donors(submission_id=metadata.submission_id, pseudonym=meta_father.donor_pseudonym)[0]
+    assert meta_father.research_consents[0].no_scope_justification == db_father.research_consent_missing_justification
 
 
 def test_populate_redacted(tmp_path: Path, blank_database_config_path: Path):
