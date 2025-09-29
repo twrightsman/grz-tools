@@ -522,7 +522,7 @@ def _diff_donors(
             library_types={datum.library_type for datum in donor.lab_data},
             sequence_types={datum.sequence_type for datum in donor.lab_data},
             sequence_subtypes={datum.sequence_subtype for datum in donor.lab_data},
-            mv_consented=True,  # currently must be true to validate, revisit this to allow revocation
+            mv_consented=donor.consents_to_mv(),
             research_consented=donor.consents_to_research(date=date.today()),
             research_consent_missing_justification=donor.research_consents[0].no_scope_justification
             if donor.research_consents

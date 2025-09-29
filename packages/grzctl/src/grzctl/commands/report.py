@@ -381,6 +381,7 @@ def _dump_dataset_report(output_path: Path, database: SubmissionDb, year: int, q
         id2sequence_subtypes_index = {}
         id2library_types_index = {}
         id2no_scope_justifications = {}
+        id2mv_consented = {}
         for submission_id, submission_donors in itertools.groupby(
             sorted(donors, key=attrgetter("submission_id")), key=attrgetter("submission_id")
         ):
@@ -388,12 +389,14 @@ def _dump_dataset_report(output_path: Path, database: SubmissionDb, year: int, q
             sequence_subtypes_index = "NA"
             library_types_index = "NA"
             justifications = []
+            mv_consents = []
             for donor in submission_donors:
                 justifications.append(
                     "NA"
                     if donor.research_consent_missing_justification is None
                     else donor.research_consent_missing_justification
                 )
+                mv_consents.append(donor.mv_consented)
                 if donor.relation == Relation.index_:
                     sequence_types_index = ";".join(sorted(donor.sequence_types))
                     sequence_subtypes_index = ";".join(sorted(donor.sequence_subtypes))
@@ -403,6 +406,7 @@ def _dump_dataset_report(output_path: Path, database: SubmissionDb, year: int, q
             id2sequence_types_index[submission_id] = sequence_types_index
             id2sequence_subtypes_index[submission_id] = sequence_subtypes_index
             id2library_types_index[submission_id] = library_types_index
+            id2mv_consented[submission_id] = all(mv_consents)
 
     with open(output_path, mode="w", encoding="utf-8", newline="") as output_file:
         writer = csv.writer(output_file, delimiter="\t")
@@ -448,7 +452,7 @@ def _dump_dataset_report(output_path: Path, database: SubmissionDb, year: int, q
                     id2sequence_types_index[submission.id],
                     id2library_types_index[submission.id],
                     "yes" if submission.basic_qc_passed else "no",
-                    "yes",  # currently MV consent is required to validate, need to update this
+                    "yes" if id2mv_consented[submission.id] else "no",
                     "yes" if submission.consented else "no",
                     id2no_scope_justifications[submission.id],
                     detailed_qc_passed,
