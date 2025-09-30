@@ -439,6 +439,10 @@ def _dump_dataset_report(output_path: Path, database: SubmissionDb, year: int, q
                 detailed_qc_passed = (
                     DetailedQCPassedReportState.YES if submission.detailed_qc_passed else DetailedQCPassedReportState.NO
                 )
+            if submission.id in id2mv_consented:
+                mv_consented = "yes" if id2mv_consented[submission.id] else "no"
+            else:
+                mv_consented = "NA"
 
             writer.writerow(
                 [
@@ -449,17 +453,17 @@ def _dump_dataset_report(output_path: Path, database: SubmissionDb, year: int, q
                     submission.submission_type,
                     submission.coverage_type,
                     submission.disease_type,
-                    id2sequence_types_index[submission.id],
-                    id2library_types_index[submission.id],
+                    id2sequence_types_index.get(submission.id, "NA"),
+                    id2library_types_index.get(submission.id, "NA"),
                     "yes" if submission.basic_qc_passed else "no",
-                    "yes" if id2mv_consented[submission.id] else "no",
+                    mv_consented,
                     "yes" if submission.consented else "no",
-                    id2no_scope_justifications[submission.id],
+                    id2no_scope_justifications.get(submission.id, "NA"),
                     detailed_qc_passed,
                     submission.genomic_study_type,
                     submission.genomic_study_subtype,
                     "index",
-                    id2sequence_subtypes_index[submission.id],
+                    id2sequence_subtypes_index.get(submission.id, "NA"),
                 ]
             )
 
@@ -476,7 +480,7 @@ def _dump_qc_report(output_path: Path, database: SubmissionDb, year: int, quarte
         submissions_that_failed_detailed_qc = session.exec(query_submissions_that_failed_detailed_qc).all()
         query_reports_of_failed_submissions = (
             select(DetailedQCResult, Donor.relation)
-            .join(query_submissions_that_failed_detailed_qc.subquery())
+            .select_from(select(DetailedQCResult).join(query_submissions_that_failed_detailed_qc.subquery()))  # type: ignore[arg-type]
             .join(
                 Donor,
                 (DetailedQCResult.submission_id == Donor.submission_id)  # type: ignore[arg-type]
