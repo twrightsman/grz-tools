@@ -339,7 +339,7 @@ class ResearchConsent(StrictBaseModel):
         return self
 
     def consent_by_code(self, date: date) -> dict[str, bool]:
-        code2consent = {}
+        code2consent: dict[str, bool] = {}
         if isinstance(self.scope, Consent) and (self.scope.provision is not None):
             provisions = self.scope.provision.provision
             for provision in provisions:
@@ -347,11 +347,10 @@ class ResearchConsent(StrictBaseModel):
                     for codeable_concept in provision.code:
                         for coding in codeable_concept.coding:
                             if provision.type == ProvisionType.PERMIT:
-                                code2consent[coding.code] = True
+                                code2consent[coding.code] = code2consent.get(coding.code, True)  # propagate prior deny
                             else:
                                 # explicit deny overrides any prior/later permits for code
                                 code2consent[coding.code] = False
-                                break
         return code2consent
 
     @staticmethod
