@@ -14,6 +14,7 @@ from pathlib import Path
 import click
 import sqlalchemy as sa
 from grz_common.cli import config_file
+from grz_db.models.author import Author
 from grz_db.models.submission import (
     ChangeRequestEnum,
     ChangeRequestLog,
@@ -28,9 +29,13 @@ from sqlalchemy import func as sqlfn
 from sqlmodel import select
 
 from ..models.config import ReportConfig
-from .db.cli import get_submission_db_instance
 
 log = logging.getLogger(__name__)
+
+
+def get_submission_db_instance(db_url: str, author: Author | None = None) -> SubmissionDb:
+    """Creates and returns an instance of SubmissionDb."""
+    return SubmissionDb(db_url=db_url, author=author)
 
 
 @click.group()
