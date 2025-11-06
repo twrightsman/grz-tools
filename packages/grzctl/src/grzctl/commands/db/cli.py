@@ -1,9 +1,11 @@
 """Command for managing a submission database"""
 
+import calendar
 import csv
 import dataclasses
 import json
 import logging
+import random
 import sys
 import traceback
 from collections import namedtuple
@@ -48,11 +50,15 @@ from grz_pydantic_models.submission.metadata import (
     Relation,
     SequenceSubtype,
     SequenceType,
+    SubmissionType,
 )
 from pydantic import Field
+from sqlalchemy.orm import selectinload
+from sqlmodel import select
 
 from ...models.config import DbConfig
 from .. import limit
+from ..report import _get_quarter_date_bounds, date_to_quarter_year
 from . import SignatureStatus, _verify_signature
 from .tui import DatabaseBrowser
 
@@ -309,6 +315,115 @@ def tui(ctx: click.Context):
 
     app = DatabaseBrowser(database=database, public_keys=public_keys)
     app.run()
+
+
+@db.command("should-qc")
+@click.argument("submission_id")
+@click.option(
+    "--threshold",
+    "threshold",
+    type=click.FloatRange(0.0, 1.0),
+    metavar="FLOAT",
+    help="Minimum proportion of submissions that should be QCed (default = 0.02).",
+    default=0.02,
+)
+@click.pass_context
+def should_qc(ctx: click.Context, submission_id: str, threshold: float):
+    """Check whether a submission should be QCed."""
+    database_url = ctx.obj["db_url"]
+    database = get_submission_db_instance(database_url)
+
+    # TODO: the following should really be a method on the database
+    submission = database.get_submission(submission_id)
+    if submission is None:
+        raise click.ClickException("Submission not found in database.")
+    submission_date = submission.submission_date
+    if submission_date is None:
+        raise click.ClickException("Submission has no submission date set.")
+    submission_type = submission.submission_type
+    if submission_type is None:
+        raise click.ClickException("Submission has no type set.")
+    elif submission_type != SubmissionType.initial:
+        # only initial submissions matter for detailed QC selection
+        click.echo("false")
+        ctx.exit()
+    submission_month = submission_date.month
+    submission_quarter, submission_year = date_to_quarter_year(submission_date)
+    submission_quarter_start, submission_quarter_end = _get_quarter_date_bounds(
+        quarter=submission_quarter, year=submission_year
+    )
+    _, days_in_submission_month = calendar.monthrange(submission_year, submission_month)
+
+    # used instead of a lambda below to type check properly (get_latest_state() can return None)
+    def latest_state_is_qcing(submission: Submission):
+        latest_state = submission.get_latest_state()
+        return latest_state.state == SubmissionStateEnum.QCING if latest_state is not None else False
+
+    # yes if none QCed/QCing from submitter yet for the submission month
+    with database._get_session() as session:
+        submitter_submissions_month = session.exec(
+            select(Submission)
+            .options(selectinload(Submission.states))  # type: ignore[arg-type]
+            .where(Submission.submission_type == SubmissionType.initial)
+            .where(Submission.basic_qc_passed)  # type: ignore[arg-type]
+            .where(
+                Submission.submission_date.between(  # type: ignore[union-attr]
+                    date(year=submission_year, month=submission_month, day=1),
+                    date(year=submission_year, month=submission_month, day=days_in_submission_month),
+                )
+            )
+            .where(Submission.submitter_id == submission.submitter_id)
+        ).all()
+        submitter_submissions_month_total_qced = sum(
+            map(lambda s: s.detailed_qc_passed is not None, submitter_submissions_month)
+        )
+        log.debug(
+            f"Total QCed submissions for submitter in submission's month: {submitter_submissions_month_total_qced}"
+        )
+        submitter_submissions_month_total_qcing = sum(map(latest_state_is_qcing, submitter_submissions_month))
+        log.debug(
+            f"Total QCing submissions for submitter in submission's month: {submitter_submissions_month_total_qcing}"
+        )
+        if not (submitter_submissions_month_total_qced + submitter_submissions_month_total_qcing):
+            click.echo("true")
+            ctx.exit()
+
+    # yes if we are under threshold for submitter for the submission's quarter
+    with database._get_session() as session:
+        submitter_submissions_quarter = session.exec(
+            select(Submission)
+            .options(selectinload(Submission.states))  # type: ignore[arg-type]
+            .where(Submission.submission_type == SubmissionType.initial)
+            .where(Submission.basic_qc_passed)  # type: ignore[arg-type]
+            .where(Submission.submission_date.between(submission_quarter_start, submission_quarter_end))  # type: ignore[union-attr]
+            .where(Submission.submitter_id == submission.submitter_id)
+        ).all()
+        submitter_submissions_quarter_total_qced = sum(
+            map(lambda s: s.detailed_qc_passed is not None, submitter_submissions_quarter)
+        )
+        log.debug(
+            f"Total QCed submissions for submitter in submission's quarter: {submitter_submissions_quarter_total_qced}"
+        )
+        submitter_submissions_quarter_total_qcing = sum(map(latest_state_is_qcing, submitter_submissions_quarter))
+        log.debug(
+            f"Total QCing submissions for submitter in submission's quarter: {submitter_submissions_quarter_total_qcing}"
+        )
+        qc_ratio = (submitter_submissions_quarter_total_qced + submitter_submissions_quarter_total_qcing) / len(
+            submitter_submissions_quarter
+        )
+        log.debug(f"Total submissions for submitter in submission's quarter: {len(submitter_submissions_quarter)}")
+        log.debug(f"Ratio of submissions QCing/QCed for submitter in submission's quarter: {qc_ratio:.2%}")
+        if qc_ratio <= threshold:
+            click.echo("true")
+            ctx.exit()
+
+    # randomly return true 2% of the time if the submission is from this quarter
+    today = date.today()
+    if submission_quarter_start <= today <= submission_quarter_end:
+        log.debug("Submission quarter is current quarter. Randomly choosing whether to QC or not.")
+        click.echo(random.choices(["true", "false"], weights=[0.02, 0.98], k=1)[0])  # noqa: S311
+    else:
+        click.echo("false")
 
 
 def _build_submission_dict_from(
